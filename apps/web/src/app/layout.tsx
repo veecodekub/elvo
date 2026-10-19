@@ -19,8 +19,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-	title: "elvo",
-	description: "elvo",
+	title: "Elvo Links",
+	description: "Short Links. Clean Experience.",
 };
 
 export default function RootLayout({

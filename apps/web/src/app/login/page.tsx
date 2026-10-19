@@ -1,16 +1,11 @@
-"use client";
-
-import { useState } from "react";
-
+import { Suspense } from "react";
 import SignInForm from "@/components/sign-in-form";
-import SignUpForm from "@/components/sign-up-form";
-
 export default function LoginPage() {
-  const [showSignIn, setShowSignIn] = useState(false);
-
-  return showSignIn ? (
-    <SignInForm onSwitchToSignUp={() => setShowSignIn(false)} />
-  ) : (
-    <SignUpForm onSwitchToSignIn={() => setShowSignIn(true)} />
-  );
+	return (
+		<main className="flex items-start justify-center px-4 py-12 sm:py-20">
+			<Suspense fallback={<p>Loading sign-in…</p>}>
+				<SignInForm />
+			</Suspense>
+		</main>
+	);
 }
