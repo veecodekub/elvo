@@ -1,0 +1,3 @@
+{
+  "extends": "@elvo/config/tsconfig.base.json"
+}

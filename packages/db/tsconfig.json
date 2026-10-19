@@ -1,0 +1,6 @@
+{
+  "extends": "@elvo/config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  }
+}
