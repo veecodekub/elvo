@@ -138,3 +138,7 @@ After changing auth plugins or schema options, run `bun run auth:generate` from 
 ## Google Sign-in
 
 Elvo Links uses Google-only sign-in. Follow [Google auth setup](docs/development/google-auth.md) for OAuth credentials, exact callback URLs, and verification. Email/password sign-in is disabled.
+
+## Short Links
+
+Creating, opening, and verifying Short Links is documented in [Short Links](docs/development/short-links.md).
