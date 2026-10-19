@@ -73,6 +73,9 @@ Consequences:
 - `vercel build` on a local machine pulls placeholders for secret values, so
   the freeze step cannot validate them. Use `vercel dev` or `bun run build` for
   local checks.
+- Turbo only passes environment variables declared in `turbo.json` to build
+  tasks. Add new credentials to `globalEnv`, or the freeze step silently
+  records them as unset.
 
 Database migrations are not part of a deployment. Apply them from a machine
 with `DATABASE_URL` set:
