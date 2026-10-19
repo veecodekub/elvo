@@ -14,7 +14,12 @@ The server can start without OAuth credentials to support initial setup, but Goo
 
 ## Deployment
 
-Set Google credentials in the server deployment environment. Set `BETTER_AUTH_URL` to the browser-accessible HTTPS server origin and register its exact `/api/auth/callback/google` URL with Google. Set `CORS_ORIGIN` to the web origin and configure the web public server URL accordingly. `SERVER_URL`, when used for server-side requests, is an internal networking override; it does not change Google's registered public callback.
+Set Google credentials in the server deployment environment. On Vercel
+Services the website and API share one public origin
+([Vercel deployment](vercel.md)): set `BETTER_AUTH_URL` and `CORS_ORIGIN` to
+that origin and register its exact `/api/auth/callback/google` URL with Google.
+`SERVER_URL`, when used for server-side requests, is an internal networking
+override; it does not change Google's registered public callback.
 
 HTTPS uses secure cookies. Local same-host HTTP uses HTTP-only SameSite=Lax cookies. Separate hosts use SameSite=None and require HTTPS; browser third-party cookie policies may still require deploying web and auth on the same site.
 

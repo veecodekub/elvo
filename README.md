@@ -84,6 +84,13 @@ Run standalone Node/Bun tools that use Varlock from the owning app directory so 
 
 ## Deployment
 
+### Vercel
+
+- Target: web + server as a single Vercel project with shared routing, environment variables, and one domain
+- Config: `vercel.json` (services, public rewrites, and the web-to-server binding)
+- Set the project's framework preset to **Services**, then deploy through Git or the CLI
+- Follow [Vercel deployment](docs/development/vercel.md) for required environment variables, preview caveats, and verification
+
 ### Docker Compose
 
 - Target: web + server

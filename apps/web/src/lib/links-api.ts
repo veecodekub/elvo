@@ -46,14 +46,19 @@ function normalizeBaseUrl(value: string) {
 	return value.replace(/\/+$/, "");
 }
 
-/** Public API origin used from the browser and from server components. */
+/**
+ * Browser-facing API origin. An empty value means same-origin: on Vercel the
+ * `/api/*` rewrite sends those requests to the server service, while local
+ * development sets NEXT_PUBLIC_SERVER_URL to the API port.
+ */
 export function getApiBaseUrl() {
 	return normalizeBaseUrl(process.env.NEXT_PUBLIC_SERVER_URL ?? "");
 }
 
 /**
- * API origin for server-to-server calls. Docker deployments set SERVER_URL to
- * an internal address; local development falls back to the public URL.
+ * API origin for server-side calls from route handlers and server components.
+ * Prefer the internal service URL: Docker Compose sets SERVER_URL and Vercel
+ * injects it through the `web` service binding. Falls back to the public URL.
  */
 export function getServerApiBaseUrl() {
 	const processEnv = typeof process === "undefined" ? undefined : process.env;

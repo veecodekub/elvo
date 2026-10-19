@@ -11,13 +11,18 @@ export async function GET(
 	{ params }: { params: Promise<{ code: string }> },
 ) {
 	const { code } = await params;
-	const upstream = await fetch(
-		`${getServerApiBaseUrl()}/${encodeURIComponent(code)}`,
-		{
-			cache: "no-store",
-			redirect: "manual",
-		},
-	);
+	const apiBaseUrl = getServerApiBaseUrl();
+	if (!apiBaseUrl) {
+		return new Response(
+			"Server API is not configured. Set SERVER_URL or NEXT_PUBLIC_SERVER_URL.",
+			{ status: 502, headers: { "Cache-Control": "no-store" } },
+		);
+	}
+
+	const upstream = await fetch(`${apiBaseUrl}/${encodeURIComponent(code)}`, {
+		cache: "no-store",
+		redirect: "manual",
+	});
 
 	if (upstream.status === 302) {
 		const location = upstream.headers.get("location");

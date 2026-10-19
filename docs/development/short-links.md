@@ -22,6 +22,8 @@ HTTP 302 redirect from `/<code>` on the public website.
 `PUBLIC_WEB_ORIGIN` on the server is the public website origin used to build
 Short Link URLs (for example `https://elvo.example`). It is optional and falls
 back to `CORS_ORIGIN`, so local development works with the web app on port 3001.
+On Vercel Services the website and API share one public origin, so the project
+domain is also the short-link origin ([Vercel deployment](vercel.md)).
 
 Do not hardcode illustrative domains in application code.
 
