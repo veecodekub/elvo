@@ -23,6 +23,7 @@
         "@elvo/auth": "workspace:*",
         "@elvo/db": "workspace:*",
         "better-auth": "catalog:",
+        "drizzle-orm": "catalog:",
         "evlog": "catalog:",
         "hono": "^4.13.7",
         "varlock": "catalog:",

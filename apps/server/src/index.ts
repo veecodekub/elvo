@@ -1,44 +1,55 @@
 import { initLogger } from "evlog";
-import { createAuthMiddleware, type BetterAuthInstance } from "evlog/better-auth";
+import {
+	type BetterAuthInstance,
+	createAuthMiddleware,
+} from "evlog/better-auth";
 import { createFsDrain } from "evlog/fs";
-import { evlog, type EvlogVariables } from "evlog/hono";
+import { evlog } from "evlog/hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import { ENV } from "./env.server";
-import { auth } from "./services";
+import { createLinksRoutes } from "./links/routes";
+import { auth, db, publicWebOrigin } from "./services";
+import type { AppEnv } from "./types";
 
 initLogger({
-  env: { service: "elvo-server" },
+	env: { service: "elvo-server" },
 });
 
 const identifyUser = createAuthMiddleware(auth as BetterAuthInstance, {
-  exclude: ["/api/auth/**"],
-  maskEmail: true,
+	exclude: ["/api/auth/**"],
+	maskEmail: true,
 });
 
-const app = new Hono<EvlogVariables>();
+const app = new Hono<AppEnv>();
 
-app.use(evlog({ drain: process.env.NODE_ENV === "production" ? undefined : createFsDrain() }));
+app.use(
+	evlog({
+		drain: process.env.NODE_ENV === "production" ? undefined : createFsDrain(),
+	}),
+);
 app.use("*", async (c, next) => {
-  await identifyUser(c.get("log"), c.req.raw.headers, c.req.path);
-  await next();
+	await identifyUser(c.get("log"), c.req.raw.headers, c.req.path);
+	await next();
 });
 
 app.use(
-  "/*",
-  cors({
-    origin: ENV.CORS_ORIGIN,
-    allowMethods: ["GET", "POST", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  }),
+	"/*",
+	cors({
+		origin: ENV.CORS_ORIGIN,
+		allowMethods: ["GET", "POST", "OPTIONS"],
+		allowHeaders: ["Content-Type", "Authorization"],
+		credentials: true,
+	}),
 );
 
 app.on(["POST", "GET"], "/api/auth/*", async (c) => auth.handler(c.req.raw));
 
+app.route("/", createLinksRoutes({ db, auth, publicWebOrigin }));
+
 app.get("/", (c) => {
-  return c.text("OK");
+	return c.text("OK");
 });
 
 export default app;
