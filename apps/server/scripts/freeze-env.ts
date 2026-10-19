@@ -12,4 +12,9 @@ if (!process.env._VARLOCK_ENV_KEY) {
 	args.push("--allow-plaintext");
 }
 
-execFileSync("varlock", args, { stdio: "inherit" });
+execFileSync("varlock", args, {
+	stdio: "inherit",
+	// Vercel builds do not always export NODE_ENV. Force the runtime value so
+	// the frozen env does not flip the deployed app back into development.
+	env: { ...process.env, NODE_ENV: "production" },
+});
