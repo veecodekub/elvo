@@ -54,6 +54,26 @@ The repository deploys as one Vercel project with two services, defined in
    requires its own authorized redirect URI, or restrict OAuth credentials to
    the production environment.
 
+### Server build and environment
+
+`apps/server` builds a self-contained bundle into `dist/`: tsdown inlines every
+dependency because Vercel Functions cannot resolve Bun's workspace symlinks at
+runtime. The Vercel build then freezes the resolved environment into
+`dist/.varlock-frozen-env` (`varlock freeze`, run by `scripts/freeze-env.ts`),
+because Functions ship no varlock CLI and no `.env` files. The bundle opts into
+that file automatically (`src/env-frozen.ts`) when it is present.
+
+Consequences:
+
+- Environment changes apply on the next deployment, not on restart. Rotate
+  values in Vercel, then redeploy.
+- Frozen values are written to the function artifact in plaintext. Set
+  `_VARLOCK_ENV_KEY` for both the build and runtime environments to encrypt the
+  file instead.
+- `vercel build` on a local machine pulls placeholders for secret values, so
+  the freeze step cannot validate them. Use `vercel dev` or `bun run build` for
+  local checks.
+
 Database migrations are not part of a deployment. Apply them from a machine
 with `DATABASE_URL` set:
 
