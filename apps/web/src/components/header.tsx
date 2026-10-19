@@ -12,29 +12,20 @@ export default function Header() {
 		pathname.startsWith("/prototype/")
 	)
 		return null;
-	const links = [
-		{ to: "/", label: "Home" },
-		{ to: "/dashboard", label: "Dashboard" },
-	] as const;
-
 	return (
-		<div>
-			<div className="flex flex-row items-center justify-between px-2 py-1">
-				<nav className="flex gap-4 text-lg">
-					{links.map(({ to, label }) => {
-						return (
-							<Link key={to} href={to}>
-								{label}
-							</Link>
-						);
-					})}
-				</nav>
-				<div className="flex items-center gap-2">
+		<header className="border-b">
+			<div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+				<Link href="/" className="font-semibold text-xl tracking-tight">
+					elvo{" "}
+					<span className="font-normal text-muted-foreground text-sm">
+						/ links
+					</span>
+				</Link>
+				<div className="flex items-center gap-3">
 					<ModeToggle />
 					<UserMenu />
 				</div>
 			</div>
-			<hr />
-		</div>
+		</header>
 	);
 }
