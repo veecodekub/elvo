@@ -40,3 +40,20 @@ History currently contains only `initial commit`, so no established message conv
 ## Environment & Agent Instructions
 
 Commit `.env.schema` files; keep secrets in ignored `.env` files. Run `bun run env:generate` after schema edits and use generated `ENV` accessors. Run Varlock-dependent standalone tools from their owning workspace directory. Agents must prefix shell commands with `rtk`, as required by `/Users/veecodekub/.codex/RTK.md`.
+
+## Agent skills
+
+### Issue tracker
+
+Track issues and specs in GitHub Issues for `veecodekub/elvo`.
+See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five standard triage labels.
+See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Use a single-context layout: root `CONTEXT.md` and `docs/adr/`.
+See `docs/agents/domain.md`.
