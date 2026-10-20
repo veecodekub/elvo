@@ -84,6 +84,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@elvo/ui/components/tooltip";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	ArrowUpRight,
 	BarChart3,
@@ -100,28 +101,27 @@ import {
 	X,
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
-import {
-	type FormEvent,
-	useCallback,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import { toast } from "sonner";
 
 import type { authClient } from "@/lib/auth-client";
 import {
 	createShortLink,
-	getLinkAnalytics,
-	type LinkAnalytics,
 	type LinkQuota,
 	type LinkStatusFilter,
 	LinksApiError,
-	listLinks,
 	type ShortLink,
-	updateShortLink,
 } from "@/lib/links-api";
+import {
+	linkAnalyticsQueryOptions,
+	linkKeys,
+	linksQueryOptions,
+	patchLinkInSnapshots,
+	setQuotaInSnapshots,
+	useToggleLinkMutation,
+	useUpdateLinkMutation,
+} from "@/lib/links-queries";
 
 const DESTINATION_ERROR =
 	"Enter a valid HTTP or HTTPS URL, for example https://example.com.";
@@ -134,7 +134,6 @@ const GENERIC_ANALYTICS_ERROR =
 	"We couldn't load analytics. Check your connection and try again.";
 const QR_DOWNLOAD_ERROR =
 	"We couldn't create the QR code PNG. Check your browser and try again.";
-const ANALYTICS_POLL_MS = 30_000;
 const SEARCH_DEBOUNCE_MS = 250;
 const UTC_OFFSET_TIME_ZONE = "Asia/Bangkok";
 const EMPTY_QUOTA: LinkQuota = { used: 0, limit: 100, remaining: 100 };
@@ -356,23 +355,16 @@ export default function Dashboard({
 }: {
 	session: typeof authClient.$Infer.Session;
 }) {
-	const [links, setLinks] = useState<ShortLink[]>([]);
-	const [quota, setQuota] = useState<LinkQuota>(EMPTY_QUOTA);
-	const [pageInfo, setPageInfo] = useState<PageInfo>(INITIAL_PAGE_INFO);
+	const queryClient = useQueryClient();
 
 	const [searchInput, setSearchInput] = useState("");
 	const [query, setQuery] = useState("");
 	const [status, setStatus] = useState<LinkStatusFilter>("all");
 	const [page, setPage] = useState(1);
-	const [refreshToken, setRefreshToken] = useState(0);
 
 	const [createdLink, setCreatedLink] = useState<ShortLink | null>(null);
 	const [qrLink, setQrLink] = useState<ShortLink | null>(null);
 	const [analyticsLink, setAnalyticsLink] = useState<ShortLink | null>(null);
-	const [analytics, setAnalytics] = useState<LinkAnalytics | null>(null);
-	const [analyticsLoading, setAnalyticsLoading] = useState(false);
-	const [analyticsError, setAnalyticsError] = useState<string | null>(null);
-	const [analyticsRefreshToken, setAnalyticsRefreshToken] = useState(0);
 	const [editing, setEditing] = useState<ShortLink | null>(null);
 	const [discardOpen, setDiscardOpen] = useState(false);
 
@@ -380,21 +372,52 @@ export default function Dashboard({
 	const [titleError, setTitleError] = useState<string | null>(null);
 	const [formError, setFormError] = useState<string | null>(null);
 	const [editError, setEditError] = useState<string | null>(null);
-	const [listError, setListError] = useState<string | null>(null);
-	const [pending, setPending] = useState(false);
-	const [editPending, setEditPending] = useState(false);
-	const [loading, setLoading] = useState(true);
 
 	const destinationRef = useRef<HTMLInputElement>(null);
 	const editFormRef = useRef<HTMLFormElement>(null);
 	const editDestinationRef = useRef<HTMLInputElement>(null);
 
+	const {
+		data: linksSnapshot,
+		error: linksError,
+		isFetching: linksFetching,
+		isPending: linksPending,
+		refetch: refetchLinks,
+	} = useQuery(linksQueryOptions({ page, query, status }));
+	const links = linksSnapshot?.links ?? [];
+	const quota = linksSnapshot?.quota ?? EMPTY_QUOTA;
+	const pageInfo: PageInfo = linksSnapshot
+		? {
+				page: linksSnapshot.page,
+				pageSize: linksSnapshot.pageSize,
+				total: linksSnapshot.total,
+				totalPages: linksSnapshot.totalPages,
+			}
+		: INITIAL_PAGE_INFO;
+	const listLoading = linksPending || (linksFetching && !linksSnapshot);
+	const listError =
+		linksError && !linksSnapshot
+			? linksError instanceof LinksApiError
+				? linksError.message
+				: GENERIC_LOAD_ERROR
+			: null;
+
+	const analyticsCode = analyticsLink?.code ?? null;
+	const analyticsQuery = useQuery(linkAnalyticsQueryOptions(analyticsCode));
+	const analytics = analyticsQuery.data ?? null;
+	const analyticsLoading = analyticsQuery.isFetching && !analytics;
+	const analyticsError = analyticsQuery.error
+		? analyticsQuery.error instanceof LinksApiError
+			? analyticsQuery.error.message
+			: GENERIC_ANALYTICS_ERROR
+		: null;
+
+	const createLinkMutation = useMutation({ mutationFn: createShortLink });
+	const updateLinkMutation = useUpdateLinkMutation();
+	const toggleLinkMutation = useToggleLinkMutation();
+
 	const atQuota = quota.remaining <= 0;
 	const filtersActive = query.length > 0 || status !== "all";
-
-	const refresh = useCallback(() => {
-		setRefreshToken((current) => current + 1);
-	}, []);
 
 	useEffect(() => {
 		const timeout = setTimeout(() => {
@@ -404,137 +427,24 @@ export default function Dashboard({
 		return () => clearTimeout(timeout);
 	}, [searchInput]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshToken forces a refetch after a mutation.
 	useEffect(() => {
-		const controller = new AbortController();
-		let cancelled = false;
-
-		setLoading(true);
-		setListError(null);
-
-		listLinks({ page, query, signal: controller.signal, status })
-			.then((snapshot) => {
-				if (cancelled) return;
-				setLinks(snapshot.links);
-				setQuota(snapshot.quota);
-				setPageInfo({
-					page: snapshot.page,
-					pageSize: snapshot.pageSize,
-					total: snapshot.total,
-					totalPages: snapshot.totalPages,
-				});
-				setPage((current) =>
-					current === snapshot.page ? current : snapshot.page,
-				);
-			})
-			.catch((error: unknown) => {
-				if (
-					cancelled ||
-					(error instanceof DOMException && error.name === "AbortError")
-				) {
-					return;
-				}
-				setListError(
-					error instanceof LinksApiError ? error.message : GENERIC_LOAD_ERROR,
-				);
-			})
-			.finally(() => {
-				if (!cancelled) setLoading(false);
-			});
-
-		return () => {
-			cancelled = true;
-			controller.abort();
-		};
-	}, [page, query, refreshToken, status]);
-
-	const analyticsCode = analyticsLink?.code ?? null;
-
-	// Fetch immediately on open, then poll while the dialog remains open so new
-	// Clicks appear without a manual refresh.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: analyticsRefreshToken intentionally restarts the poll after a failed load.
-	useEffect(() => {
-		if (!analyticsCode) return;
-		const code = analyticsCode;
-
-		let cancelled = false;
-		let initial = true;
-		const controller = new AbortController();
-
-		setAnalyticsLoading(true);
-		setAnalyticsError(null);
-
-		async function load() {
-			try {
-				const snapshot = await getLinkAnalytics(code, {
-					signal: controller.signal,
-				});
-				if (cancelled) return;
-				setAnalytics(snapshot);
-				setAnalyticsError(null);
-				setLinks((current) =>
-					current.map((link) =>
-						link.code === code
-							? { ...link, totalClicks: snapshot.totalClicks }
-							: link,
-					),
-				);
-				setCreatedLink((current) =>
-					current?.code === code
-						? { ...current, totalClicks: snapshot.totalClicks }
-						: current,
-				);
-			} catch (error) {
-				if (
-					cancelled ||
-					(error instanceof DOMException && error.name === "AbortError")
-				) {
-					return;
-				}
-				setAnalyticsError(
-					error instanceof LinksApiError
-						? error.message
-						: GENERIC_ANALYTICS_ERROR,
-				);
-			} finally {
-				if (!cancelled && initial) {
-					initial = false;
-					setAnalyticsLoading(false);
-				}
-			}
+		const resolvedPage = linksSnapshot?.page;
+		if (resolvedPage && resolvedPage !== page) {
+			setPage(resolvedPage);
 		}
+	}, [linksSnapshot?.page, page]);
 
-		void load();
-		const interval = setInterval(() => {
-			void load();
-		}, ANALYTICS_POLL_MS);
-
-		return () => {
-			cancelled = true;
-			controller.abort();
-			clearInterval(interval);
-		};
-	}, [analyticsCode, analyticsRefreshToken]);
-
-	function updateRow(code: string, changes: Partial<ShortLink>) {
-		setLinks((current) =>
-			current.map((link) =>
-				link.code === code ? { ...link, ...changes } : link,
-			),
-		);
+	useEffect(() => {
+		if (!analytics) return;
+		patchLinkInSnapshots(queryClient, analytics.code, {
+			totalClicks: analytics.totalClicks,
+		});
 		setCreatedLink((current) =>
-			current?.code === code ? { ...current, ...changes } : current,
+			current?.code === analytics.code
+				? { ...current, totalClicks: analytics.totalClicks }
+				: current,
 		);
-	}
-
-	function replaceRow(updated: ShortLink) {
-		setLinks((current) =>
-			current.map((link) => (link.code === updated.code ? updated : link)),
-		);
-		setCreatedLink((current) =>
-			current?.code === updated.code ? updated : current,
-		);
-	}
+	}, [analytics, queryClient]);
 
 	function clearFilters() {
 		setSearchInput("");
@@ -559,18 +469,16 @@ export default function Dashboard({
 			return;
 		}
 		setDestinationError(null);
-		setPending(true);
 
 		try {
-			const result = await createShortLink({
+			const result = await createLinkMutation.mutateAsync({
 				destination,
 				title: title || undefined,
 			});
-			setQuota(result.quota);
+			setQuotaInSnapshots(queryClient, result.quota);
 			setCreatedLink(result.link);
-			setListError(null);
 			setPage(1);
-			refresh();
+			void queryClient.invalidateQueries({ queryKey: linkKeys.lists() });
 			form.reset();
 			toast.success("Short link created.");
 		} catch (error) {
@@ -586,8 +494,6 @@ export default function Dashboard({
 			} else {
 				setFormError(GENERIC_CREATE_ERROR);
 			}
-		} finally {
-			setPending(false);
 		}
 	}
 
@@ -600,48 +506,52 @@ export default function Dashboard({
 		}
 	}
 
-	async function changeEnabled(
-		link: ShortLink,
-		enabled: boolean,
-		isUndo = false,
-	) {
+	function changeEnabled(link: ShortLink, enabled: boolean, isUndo = false) {
 		const previous = link.enabled;
 		if (previous === enabled) return;
 
-		updateRow(link.code, { enabled });
-		try {
-			const result = await updateShortLink(link.code, { enabled });
-			replaceRow(result.link);
-			const label = enabled ? "enabled" : "disabled";
-			if (isUndo) {
-				toast.success(`${linkTitle(link)} ${label} again.`);
-			} else {
-				toast.success(`${linkTitle(link)} ${label}.`, {
-					action: {
-						label: "Undo",
-						onClick: () => {
-							void changeEnabled({ ...link, enabled }, previous, true);
-						},
-					},
-				});
-			}
-			if (filtersActive) refresh();
-		} catch (error) {
-			updateRow(link.code, { enabled: previous });
-			toast.error(
-				error instanceof LinksApiError ? error.message : GENERIC_UPDATE_ERROR,
-			);
-		}
+		toggleLinkMutation.mutate(
+			{ code: link.code, enabled },
+			{
+				onError: (error) => {
+					toast.error(
+						error instanceof LinksApiError
+							? error.message
+							: GENERIC_UPDATE_ERROR,
+					);
+				},
+				onSuccess: ({ link: updatedLink }) => {
+					setCreatedLink((current) =>
+						current?.code === updatedLink.code ? updatedLink : current,
+					);
+					const label = enabled ? "enabled" : "disabled";
+					if (isUndo) {
+						toast.success(`${linkTitle(link)} ${label} again.`);
+					} else {
+						toast.success(`${linkTitle(link)} ${label}.`, {
+							action: {
+								label: "Undo",
+								onClick: () => {
+									changeEnabled({ ...link, enabled }, previous, true);
+								},
+							},
+						});
+					}
+					if (filtersActive) {
+						void queryClient.invalidateQueries({ queryKey: linkKeys.lists() });
+					}
+				},
+			},
+		);
 	}
 
 	function openAnalytics(link: ShortLink) {
-		setAnalytics(null);
-		setAnalyticsError(null);
+		void queryClient.removeQueries({ queryKey: linkKeys.analytics(link.code) });
 		setAnalyticsLink(link);
 	}
 
 	function retryAnalytics() {
-		setAnalyticsRefreshToken((current) => current + 1);
+		void analyticsQuery.refetch();
 	}
 
 	function openEdit(link: ShortLink) {
@@ -685,15 +595,21 @@ export default function Dashboard({
 		}
 
 		setEditError(null);
-		setEditPending(true);
 		try {
-			const result = await updateShortLink(editing.code, {
-				destination,
-				title: title || null,
+			const result = await updateLinkMutation.mutateAsync({
+				code: editing.code,
+				input: {
+					destination,
+					title: title || null,
+				},
 			});
-			replaceRow(result.link);
+			setCreatedLink((current) =>
+				current?.code === result.link.code ? result.link : current,
+			);
 			closeEdit();
-			if (filtersActive) refresh();
+			if (filtersActive) {
+				void queryClient.invalidateQueries({ queryKey: linkKeys.lists() });
+			}
 			toast.success("Link updated. The short URL stays the same.");
 		} catch (error) {
 			if (
@@ -707,12 +623,10 @@ export default function Dashboard({
 					error instanceof LinksApiError ? error.message : GENERIC_UPDATE_ERROR,
 				);
 			}
-		} finally {
-			setEditPending(false);
 		}
 	}
 
-	const showEmpty = !loading && !listError && pageInfo.total === 0;
+	const showEmpty = !listLoading && !listError && pageInfo.total === 0;
 	const firstVisible = (pageInfo.page - 1) * pageInfo.pageSize + 1;
 	const lastVisible = Math.min(
 		pageInfo.page * pageInfo.pageSize,
@@ -810,9 +724,16 @@ export default function Dashboard({
 									>
 										Shorten
 									</FieldLabel>
-									<Button type="submit" disabled={pending || atQuota}>
-										{pending ? "Creating…" : "Shorten link"}
-										{pending ? null : <ArrowUpRight data-icon="inline-end" />}
+									<Button
+										type="submit"
+										disabled={createLinkMutation.isPending || atQuota}
+									>
+										{createLinkMutation.isPending
+											? "Creating…"
+											: "Shorten link"}
+										{createLinkMutation.isPending ? null : (
+											<ArrowUpRight data-icon="inline-end" />
+										)}
 									</Button>
 								</Field>
 							</FieldGroup>
@@ -920,7 +841,7 @@ export default function Dashboard({
 						</div>
 					</CardHeader>
 					<CardContent>
-						{loading ? (
+						{listLoading ? (
 							<div
 								className="grid gap-3"
 								role="status"
@@ -935,7 +856,11 @@ export default function Dashboard({
 								<p role="alert" className="text-sm">
 									{listError}
 								</p>
-								<Button variant="outline" size="sm" onClick={() => refresh()}>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => void refetchLinks()}
+								>
 									<RefreshCw data-icon="inline-start" />
 									Try again
 								</Button>
@@ -1288,7 +1213,7 @@ export default function Dashboard({
 									</p>
 								</div>
 
-								{analyticsError ? (
+								{analyticsError && !analyticsLoading ? (
 									<div className="flex flex-col items-start gap-2 rounded-lg border border-destructive/40 p-3">
 										<p role="alert" className="text-destructive text-sm">
 											{analyticsError}
@@ -1434,8 +1359,8 @@ export default function Dashboard({
 											<FieldError id="edit-url-error">{editError}</FieldError>
 										) : null}
 									</Field>
-									<Button type="submit" disabled={editPending}>
-										{editPending ? "Saving…" : "Save changes"}
+									<Button type="submit" disabled={updateLinkMutation.isPending}>
+										{updateLinkMutation.isPending ? "Saving…" : "Save changes"}
 									</Button>
 								</FieldGroup>
 							</form>
