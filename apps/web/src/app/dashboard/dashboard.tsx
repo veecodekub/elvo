@@ -803,10 +803,18 @@ export default function Dashboard({
 										<FieldError id="title-error">{titleError}</FieldError>
 									) : null}
 								</Field>
-								<Button type="submit" disabled={pending || atQuota}>
-									{pending ? "Creating…" : "Shorten link"}
-									{pending ? null : <ArrowUpRight data-icon="inline-end" />}
-								</Button>
+								<Field className="md:w-auto">
+									<FieldLabel
+										aria-hidden="true"
+										className="invisible hidden md:flex"
+									>
+										Shorten
+									</FieldLabel>
+									<Button type="submit" disabled={pending || atQuota}>
+										{pending ? "Creating…" : "Shorten link"}
+										{pending ? null : <ArrowUpRight data-icon="inline-end" />}
+									</Button>
+								</Field>
 							</FieldGroup>
 							{formError ? (
 								<p role="alert" className="mt-3 text-destructive text-sm">
