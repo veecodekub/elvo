@@ -2,9 +2,13 @@ export type ShortLink = {
 	code: string;
 	title: string | null;
 	destination: string;
+	enabled: boolean;
 	shortUrl: string;
 	createdAt: string;
+	updatedAt: string;
 };
+
+export type LinkStatusFilter = "all" | "active" | "disabled";
 
 export type LinkQuota = {
 	used: number;
@@ -15,12 +19,17 @@ export type LinkQuota = {
 export type LinksSnapshot = {
 	links: ShortLink[];
 	quota: LinkQuota;
+	page: number;
+	pageSize: number;
+	total: number;
+	totalPages: number;
 };
 
 export type LinksApiErrorCode =
 	| "INVALID_REQUEST"
 	| "INVALID_URL"
 	| "INVALID_TITLE"
+	| "NOT_FOUND"
 	| "QUOTA_REACHED"
 	| "RATE_LIMITED"
 	| "UNAUTHORIZED";
@@ -92,14 +101,50 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 export async function listLinks(options?: {
+	query?: string;
+	status?: LinkStatusFilter;
+	page?: number;
 	cookie?: string;
+	signal?: AbortSignal;
 }): Promise<LinksSnapshot> {
-	const response = await fetch(`${getServerApiBaseUrl()}/api/links`, {
+	const params = new URLSearchParams();
+	if (options?.query) params.set("q", options.query);
+	if (options?.status && options.status !== "all") {
+		params.set("status", options.status);
+	}
+	if (options?.page && options.page > 1) {
+		params.set("page", String(options.page));
+	}
+	const search = params.size > 0 ? `?${params.toString()}` : "";
+
+	const response = await fetch(`${getServerApiBaseUrl()}/api/links${search}`, {
 		cache: "no-store",
 		credentials: options?.cookie ? "omit" : "include",
 		headers: options?.cookie ? { cookie: options.cookie } : undefined,
+		signal: options?.signal,
 	});
 	return parseResponse<LinksSnapshot>(response);
+}
+
+export async function updateShortLink(
+	code: string,
+	input: {
+		title?: string | null;
+		destination?: string;
+		enabled?: boolean;
+	},
+): Promise<{ link: ShortLink }> {
+	const response = await fetch(
+		`${getApiBaseUrl()}/api/links/${encodeURIComponent(code)}`,
+		{
+			body: JSON.stringify(input),
+			cache: "no-store",
+			credentials: "include",
+			headers: { "Content-Type": "application/json" },
+			method: "PATCH",
+		},
+	);
+	return parseResponse<{ link: ShortLink }>(response);
 }
 
 export async function createShortLink(input: {

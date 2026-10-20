@@ -7,6 +7,12 @@ export const LINK_RATE_LIMIT = 10;
 export const LINK_RATE_WINDOW_SECONDS = 60;
 export const LINK_TITLE_MAX_LENGTH = 120;
 export const LINK_DESTINATION_MAX_LENGTH = 2048;
+export const LINK_PAGE_SIZE = 10;
+export const LINK_SEARCH_MAX_LENGTH = 200;
+
+export const linkStatusFilterSchema = z.enum(["all", "active", "disabled"]);
+
+export type LinkStatusFilter = z.infer<typeof linkStatusFilterSchema>;
 
 /**
  * Paths served by the website or the API that must never be handed out as a
@@ -106,6 +112,30 @@ export const createLinkInputSchema = z.object({
 });
 
 export type CreateLinkInput = z.infer<typeof createLinkInputSchema>;
+
+export const listLinksQuerySchema = z.object({
+	q: z.string().trim().max(LINK_SEARCH_MAX_LENGTH).optional(),
+	status: linkStatusFilterSchema.default("all"),
+	page: z.coerce.number().int().min(1).default(1),
+});
+
+export const updateLinkInputSchema = z
+	.object({
+		title: z.string().trim().max(LINK_TITLE_MAX_LENGTH).nullable().optional(),
+		destination: z
+			.string()
+			.trim()
+			.min(1)
+			.max(LINK_DESTINATION_MAX_LENGTH)
+			.optional(),
+		enabled: z.boolean().optional(),
+	})
+	.strict()
+	.refine((value) => Object.values(value).some((item) => item !== undefined), {
+		message: "Send at least one field to update.",
+	});
+
+export type UpdateLinkInput = z.infer<typeof updateLinkInputSchema>;
 
 export function escapeHtml(value: string): string {
 	return value

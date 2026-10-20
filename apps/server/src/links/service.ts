@@ -1,12 +1,14 @@
 import type { Database } from "@elvo/db";
 import { links } from "@elvo/db/schema/links";
-import { count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm";
 
 import {
 	generateLinkCode,
+	LINK_PAGE_SIZE,
 	LINK_QUOTA_LIMIT,
 	LINK_RATE_LIMIT,
 	LINK_RATE_WINDOW_SECONDS,
+	type LinkStatusFilter,
 } from "./domain";
 
 export type LinkRow = {
@@ -14,10 +16,26 @@ export type LinkRow = {
 	code: string;
 	title: string | null;
 	destination: string;
+	enabled: boolean;
 	slot: number | null;
 	ownerId: string;
 	createdAt: Date;
 	updatedAt: Date;
+};
+
+export type ListLinksOptions = {
+	query?: string;
+	status?: LinkStatusFilter;
+	page?: number;
+	pageSize?: number;
+};
+
+export type LinkPage = {
+	rows: LinkRow[];
+	total: number;
+	page: number;
+	pageSize: number;
+	totalPages: number;
 };
 
 export type CreateLinkInput = {
@@ -103,16 +121,57 @@ export async function countLinks(
 	return Number(row?.value ?? 0);
 }
 
+/** Escapes LIKE wildcards so a search for `100%` matches the literal text. */
+function escapeLikePattern(value: string): string {
+	return value.replace(/[\\%_]/g, "\\$&");
+}
+
+/**
+ * Newest-first page of the owner's links, optionally narrowed by a
+ * case-insensitive title/destination search and an enabled-state filter.
+ * The page is clamped server-side so a shrinking result set never strands the
+ * dashboard on a page beyond the last one.
+ */
 export async function listLinks(
 	db: Database,
 	ownerId: string,
-): Promise<LinkRow[]> {
-	return db
+	options: ListLinksOptions = {},
+): Promise<LinkPage> {
+	const pageSize = options.pageSize ?? LINK_PAGE_SIZE;
+	const conditions = [eq(links.ownerId, ownerId)];
+
+	if (options.status === "active") {
+		conditions.push(eq(links.enabled, true));
+	} else if (options.status === "disabled") {
+		conditions.push(eq(links.enabled, false));
+	}
+
+	const query = options.query?.trim();
+	if (query) {
+		const pattern = `%${escapeLikePattern(query)}%`;
+		const titleMatch = ilike(links.title, pattern);
+		const destinationMatch = ilike(links.destination, pattern);
+		conditions.push(or(titleMatch, destinationMatch) ?? titleMatch);
+	}
+
+	const where = and(...conditions);
+	const [counted] = await db
+		.select({ value: count() })
+		.from(links)
+		.where(where);
+	const total = Number(counted?.value ?? 0);
+	const totalPages = Math.max(1, Math.ceil(total / pageSize));
+	const page = Math.min(Math.max(1, options.page ?? 1), totalPages);
+
+	const rows = await db
 		.select()
 		.from(links)
-		.where(eq(links.ownerId, ownerId))
+		.where(where)
 		.orderBy(desc(links.createdAt), desc(links.id))
-		.limit(LINK_QUOTA_LIMIT);
+		.limit(pageSize)
+		.offset((page - 1) * pageSize);
+
+	return { rows, total, page, pageSize, totalPages };
 }
 
 export async function findLinkDestination(
@@ -122,9 +181,34 @@ export async function findLinkDestination(
 	const [row] = await db
 		.select({ destination: links.destination })
 		.from(links)
-		.where(eq(links.code, code))
+		.where(and(eq(links.code, code), eq(links.enabled, true)))
 		.limit(1);
 	return row?.destination ?? null;
+}
+
+export type UpdateLinkChanges = {
+	title?: string | null;
+	destination?: string;
+	enabled?: boolean;
+};
+
+/**
+ * Applies owner-scoped mutations. The owner id is part of the WHERE clause, so
+ * guessing another account's Link Code updates nothing and looks the same as an
+ * unknown code.
+ */
+export async function updateLink(
+	db: Database,
+	ownerId: string,
+	code: string,
+	changes: UpdateLinkChanges,
+): Promise<LinkRow | null> {
+	const [row] = await db
+		.update(links)
+		.set(changes)
+		.where(and(eq(links.ownerId, ownerId), eq(links.code, code)))
+		.returning();
+	return row ?? null;
 }
 
 async function getLinkById(db: Database, id: string): Promise<LinkRow | null> {

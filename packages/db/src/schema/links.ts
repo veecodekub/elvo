@@ -1,5 +1,6 @@
 import { defineRelationsPart, sql } from "drizzle-orm";
 import {
+	boolean,
 	index,
 	integer,
 	pgTable,
@@ -17,6 +18,11 @@ export const links = pgTable(
 		code: text("code").notNull().unique(),
 		title: text("title"),
 		destination: text("destination").notNull(),
+		/**
+		 * Owners can switch a link off without changing its code or quota
+		 * slot. Disabled links resolve to the "Link unavailable" page.
+		 */
+		enabled: boolean("enabled").default(true).notNull(),
 		ownerId: text("owner_id")
 			.notNull()
 			.references(() => user.id, { onDelete: "cascade" }),
