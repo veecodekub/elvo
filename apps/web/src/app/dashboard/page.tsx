@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 
 import Dashboard from "./dashboard";
+import DashboardQueryProvider from "./query-provider";
 
 export const metadata: Metadata = {
 	title: "Dashboard",
@@ -28,5 +29,9 @@ export default async function DashboardPage() {
 		redirect("/login");
 	}
 
-	return <Dashboard session={session} />;
+	return (
+		<DashboardQueryProvider>
+			<Dashboard session={session} />
+		</DashboardQueryProvider>
+	);
 }
