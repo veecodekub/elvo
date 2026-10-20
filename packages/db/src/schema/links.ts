@@ -1,9 +1,11 @@
 import { defineRelationsPart, sql } from "drizzle-orm";
 import {
 	boolean,
+	date,
 	index,
 	integer,
 	pgTable,
+	primaryKey,
 	text,
 	timestamp,
 	uniqueIndex,
@@ -23,6 +25,11 @@ export const links = pgTable(
 		 * slot. Disabled links resolve to the "Link unavailable" page.
 		 */
 		enabled: boolean("enabled").default(true).notNull(),
+		/**
+		 * Lifetime count of successful redirect responses. Kept separately from
+		 * daily aggregates so retention never changes the lifetime total.
+		 */
+		totalClicks: integer("total_clicks").default(0).notNull(),
 		ownerId: text("owner_id")
 			.notNull()
 			.references(() => user.id, { onDelete: "cascade" }),
@@ -43,6 +50,26 @@ export const links = pgTable(
 		uniqueIndex("links_owner_slot_unique")
 			.on(table.ownerId, table.slot)
 			.where(sql`${table.slot} is not null`),
+	],
+);
+
+/**
+ * Daily UTC Click aggregates. Retention keeps only the latest 30 calendar
+ * days; lifetime totals live on `links.totalClicks`. Rows stay anonymous:
+ * there is no visitor identifier, IP address, or per-request record.
+ */
+export const linkDailyClicks = pgTable(
+	"link_daily_clicks",
+	{
+		linkId: text("link_id")
+			.notNull()
+			.references(() => links.id, { onDelete: "cascade" }),
+		day: date("day").notNull(),
+		clicks: integer("clicks").default(0).notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.linkId, table.day] }),
+		index("link_daily_clicks_day_idx").on(table.day),
 	],
 );
 

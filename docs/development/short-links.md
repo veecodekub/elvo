@@ -3,7 +3,8 @@
 Authenticated owners create Short Links and manage them from the dashboard;
 visitors get an HTTP 302 redirect from `/<code>` on the public website. Issue
 #2 added creation and redirects; issue #3 added search, pagination, editing,
-and enable/disable; issue #4 added downloadable Link QR Codes.
+and enable/disable; issue #4 added downloadable Link QR Codes; issue #5 added
+aggregate Click Analytics.
 
 ## Behavior
 
@@ -33,6 +34,18 @@ and enable/disable; issue #4 added downloadable Link QR Codes.
   four-module quiet zone and is flattened to pure black and white. A generation
   failure is reported in the dialog, which stays open. QR customization and
   alternative formats are out of scope.
+- `GET /api/links/:code/analytics` returns the signed-in owner's lifetime Total
+  Clicks and a daily series for the latest 30 UTC calendar days, including
+  zero-activity days. Unknown codes and another account's links both return the
+  same `404 NOT_FOUND`. The dashboard opens the data in a dialog that refreshes
+  every 30 seconds while open and shows loading, empty, and retryable failure
+  states; the table and mobile cards expose the current lifetime count.
+- Every successful redirect for a known, enabled link records one Click after
+  the response has been sent. Repeat openings and bots count; disabled,
+  unknown, and suspended links do not. Destination loads, unique visitors,
+  visitor IP addresses, country, device, referrer, and bot filtering are not
+  tracked. Recording failures are logged and swallowed so a redirect never
+  fails because analytics failed, which can undercount totals.
 - Each account can hold at most 100 links, and at most 10 links can be created
   per rolling minute. Both limits are enforced in the database so concurrent
   requests cannot exceed them.
@@ -45,14 +58,38 @@ back to `CORS_ORIGIN`, so local development works with the web app on port 3001.
 On Vercel Services the website and API share one public origin, so the project
 domain is also the short-link origin ([Vercel deployment](vercel.md)).
 
+Daily analytics retention runs through either:
+
+- The Vercel Cron entry in `vercel.json`, which calls
+  `GET /api/internal/retention` daily at 00:15 UTC. Set `CRON_SECRET` (at least
+  16 characters) in the server service environment; Vercel sends it as
+  `Authorization: Bearer <CRON_SECRET>`. Without the secret the endpoint returns
+  `401`.
+- The standalone command, for local or external schedulers:
+
+  ```bash
+  cd apps/server
+  bun run analytics:retention
+  ```
+
+Retention deletes daily rows older than the latest 30 UTC calendar days and
+never changes lifetime totals.
+
 Do not hardcode illustrative domains in application code.
 
 ## Data model
 
-- `links` stores ownership, code, title, destination, an `enabled` flag, and a
-  quota `slot` in 1..100. A partial unique index on `(owner_id, slot)` makes the
-  creation statement itself reserve quota, which is exact under concurrency.
-  Disabling a link keeps its slot, so the quota counts disabled links too.
+- `links` stores ownership, code, title, destination, an `enabled` flag, a
+  quota `slot` in 1..100, and a lifetime `total_clicks` counter. A partial
+  unique index on `(owner_id, slot)` makes the creation statement itself reserve
+  quota, which is exact under concurrency. Disabling a link keeps its slot, so
+  the quota counts disabled links too.
+- `link_daily_clicks` stores anonymous daily UTC aggregates keyed by
+  `(link_id, day)` with a cascading link foreign key. A Click increments the
+  link's lifetime counter and today's daily row in one statement, so concurrent
+  increments are not lost and a failure leaves both aggregates consistent.
+  Retention removes rows before the latest 30 UTC days while `total_clicks`
+  remains intact.
 - `link_rate_limits` keeps one row per owner with the rolling window start and
   count. A guarded `ON CONFLICT DO UPDATE` serializes concurrent creations.
 
@@ -116,9 +153,25 @@ Schema migrations live in `packages/db/src/migrations`.
    generation-failure message and the mobile dialog. All temporary accounts are
    removed afterwards.
 
-5. Manually confirm the UX: sign in, search and filter the list, page through
+5. With the dev servers still running, verify aggregate analytics:
+
+   ```bash
+   cd apps/server
+   bun run verify:analytics
+   ```
+
+   The script checks owner-only access and isolation, the 30-day UTC series with
+   zero-activity days, repeat and concurrent redirect increments, disabled and
+   unknown links not counting, redirects surviving a simulated recording
+   failure, retention preserving lifetime totals and removing expired days, and
+   the real dashboard on desktop and mobile. It also checks the loading, empty,
+   failure, retry, and automatic-refresh behavior, then removes all temporary
+   accounts.
+
+6. Manually confirm the UX: sign in, search and filter the list, page through
    ten-link pages, edit a title and destination, disable and re-enable a link
    (including Undo), discard an unsaved edit, copy a link, open the QR dialog,
-   download and scan the PNG, open the short URL and observe the redirect, then
-   visit a disabled or unknown code and confirm the "Link unavailable" page.
-   Check the dashboard at mobile, tablet, and desktop widths.
+   download and scan the PNG, open the short URL and observe the redirect, open
+   the Click Analytics dialog and confirm the lifetime total and 30-day chart,
+   then visit a disabled or unknown code and confirm the "Link unavailable"
+   page. Check the dashboard at mobile, tablet, and desktop widths.

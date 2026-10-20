@@ -22,6 +22,11 @@ import {
 	CardTitle,
 } from "@elvo/ui/components/card";
 import {
+	ChartContainer,
+	ChartTooltip,
+	ChartTooltipContent,
+} from "@elvo/ui/components/chart";
+import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
@@ -81,6 +86,7 @@ import {
 } from "@elvo/ui/components/tooltip";
 import {
 	ArrowUpRight,
+	BarChart3,
 	ChevronLeft,
 	ChevronRight,
 	Copy,
@@ -101,11 +107,14 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import { toast } from "sonner";
 
 import type { authClient } from "@/lib/auth-client";
 import {
 	createShortLink,
+	getLinkAnalytics,
+	type LinkAnalytics,
 	type LinkQuota,
 	type LinkStatusFilter,
 	LinksApiError,
@@ -121,8 +130,11 @@ const GENERIC_CREATE_ERROR =
 const GENERIC_LOAD_ERROR = "We couldn't load your links. Try again.";
 const GENERIC_UPDATE_ERROR =
 	"We couldn't update this link. Check your connection and try again.";
+const GENERIC_ANALYTICS_ERROR =
+	"We couldn't load analytics. Check your connection and try again.";
 const QR_DOWNLOAD_ERROR =
 	"We couldn't create the QR code PNG. Check your browser and try again.";
+const ANALYTICS_POLL_MS = 30_000;
 const SEARCH_DEBOUNCE_MS = 250;
 const UTC_OFFSET_TIME_ZONE = "Asia/Bangkok";
 const EMPTY_QUOTA: LinkQuota = { used: 0, limit: 100, remaining: 100 };
@@ -184,6 +196,20 @@ function formatCreatedAtShort(value: string) {
 		month: "short",
 		timeZone: UTC_OFFSET_TIME_ZONE,
 	}).format(date);
+}
+
+function formatAnalyticsDay(value: string) {
+	const date = new Date(`${value}T00:00:00.000Z`);
+	if (Number.isNaN(date.getTime())) return value;
+	return new Intl.DateTimeFormat("en-GB", {
+		day: "numeric",
+		month: "short",
+		timeZone: "UTC",
+	}).format(date);
+}
+
+function formatNumber(value: number) {
+	return value.toLocaleString("en-US");
 }
 
 function LinkDestination({ destination }: { destination: string }) {
@@ -342,6 +368,11 @@ export default function Dashboard({
 
 	const [createdLink, setCreatedLink] = useState<ShortLink | null>(null);
 	const [qrLink, setQrLink] = useState<ShortLink | null>(null);
+	const [analyticsLink, setAnalyticsLink] = useState<ShortLink | null>(null);
+	const [analytics, setAnalytics] = useState<LinkAnalytics | null>(null);
+	const [analyticsLoading, setAnalyticsLoading] = useState(false);
+	const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+	const [analyticsRefreshToken, setAnalyticsRefreshToken] = useState(0);
 	const [editing, setEditing] = useState<ShortLink | null>(null);
 	const [discardOpen, setDiscardOpen] = useState(false);
 
@@ -416,6 +447,74 @@ export default function Dashboard({
 			controller.abort();
 		};
 	}, [page, query, refreshToken, status]);
+
+	const analyticsCode = analyticsLink?.code ?? null;
+
+	// Fetch immediately on open, then poll while the dialog remains open so new
+	// Clicks appear without a manual refresh.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: analyticsRefreshToken intentionally restarts the poll after a failed load.
+	useEffect(() => {
+		if (!analyticsCode) return;
+		const code = analyticsCode;
+
+		let cancelled = false;
+		let initial = true;
+		const controller = new AbortController();
+
+		setAnalyticsLoading(true);
+		setAnalyticsError(null);
+
+		async function load() {
+			try {
+				const snapshot = await getLinkAnalytics(code, {
+					signal: controller.signal,
+				});
+				if (cancelled) return;
+				setAnalytics(snapshot);
+				setAnalyticsError(null);
+				setLinks((current) =>
+					current.map((link) =>
+						link.code === code
+							? { ...link, totalClicks: snapshot.totalClicks }
+							: link,
+					),
+				);
+				setCreatedLink((current) =>
+					current?.code === code
+						? { ...current, totalClicks: snapshot.totalClicks }
+						: current,
+				);
+			} catch (error) {
+				if (
+					cancelled ||
+					(error instanceof DOMException && error.name === "AbortError")
+				) {
+					return;
+				}
+				setAnalyticsError(
+					error instanceof LinksApiError
+						? error.message
+						: GENERIC_ANALYTICS_ERROR,
+				);
+			} finally {
+				if (!cancelled && initial) {
+					initial = false;
+					setAnalyticsLoading(false);
+				}
+			}
+		}
+
+		void load();
+		const interval = setInterval(() => {
+			void load();
+		}, ANALYTICS_POLL_MS);
+
+		return () => {
+			cancelled = true;
+			controller.abort();
+			clearInterval(interval);
+		};
+	}, [analyticsCode, analyticsRefreshToken]);
 
 	function updateRow(code: string, changes: Partial<ShortLink>) {
 		setLinks((current) =>
@@ -535,6 +634,16 @@ export default function Dashboard({
 		}
 	}
 
+	function openAnalytics(link: ShortLink) {
+		setAnalytics(null);
+		setAnalyticsError(null);
+		setAnalyticsLink(link);
+	}
+
+	function retryAnalytics() {
+		setAnalyticsRefreshToken((current) => current + 1);
+	}
+
 	function openEdit(link: ShortLink) {
 		setEditError(null);
 		setEditing(link);
@@ -609,6 +718,16 @@ export default function Dashboard({
 		pageInfo.page * pageInfo.pageSize,
 		pageInfo.total,
 	);
+	const analyticsTotal =
+		analytics?.totalClicks ?? analyticsLink?.totalClicks ?? 0;
+	const analyticsChartData =
+		analytics?.days.map((day) => ({
+			clicks: day.clicks,
+			date: day.date,
+			label: formatAnalyticsDay(day.date),
+		})) ?? [];
+	const analyticsEmpty =
+		analytics?.days.every((day) => day.clicks === 0) ?? false;
 
 	return (
 		<TooltipProvider>
@@ -876,6 +995,12 @@ export default function Dashboard({
 																		<Pencil />
 																		Edit link
 																	</DropdownMenuItem>
+																	<DropdownMenuItem
+																		onClick={() => openAnalytics(link)}
+																	>
+																		<BarChart3 />
+																		Analytics
+																	</DropdownMenuItem>
 																</DropdownMenuGroup>
 															</DropdownMenuContent>
 														</DropdownMenu>
@@ -913,7 +1038,18 @@ export default function Dashboard({
 														</TooltipContent>
 													</Tooltip>
 												</CardContent>
-												<CardFooter className="justify-end">
+												<CardFooter className="justify-between gap-2">
+													<Button
+														variant="ghost"
+														size="sm"
+														aria-label={`Analytics for ${linkTitle(link)}`}
+														onClick={() => openAnalytics(link)}
+													>
+														<BarChart3 data-icon="inline-start" />
+														<span className="tabular-nums">
+															{formatNumber(link.totalClicks)} clicks
+														</span>
+													</Button>
 													<LinkStatus link={link} onChange={changeEnabled} />
 												</CardFooter>
 											</Card>
@@ -925,6 +1061,7 @@ export default function Dashboard({
 										<TableHeader>
 											<TableRow>
 												<TableHead>Link / destination</TableHead>
+												<TableHead>Clicks</TableHead>
 												<TableHead>Status</TableHead>
 												<TableHead className="hidden lg:table-cell">
 													Created (UTC+7)
@@ -956,6 +1093,18 @@ export default function Dashboard({
 															</button>
 															<LinkDestination destination={link.destination} />
 														</div>
+													</TableCell>
+													<TableCell>
+														<Button
+															variant="ghost"
+															size="sm"
+															className="-ml-2 tabular-nums"
+															aria-label={`Analytics for ${linkTitle(link)}`}
+															onClick={() => openAnalytics(link)}
+														>
+															<BarChart3 data-icon="inline-start" />
+															{formatNumber(link.totalClicks)}
+														</Button>
 													</TableCell>
 													<TableCell>
 														<LinkStatus link={link} onChange={changeEnabled} />
@@ -999,6 +1148,21 @@ export default function Dashboard({
 																	<QrCode />
 																</TooltipTrigger>
 																<TooltipContent>QR code</TooltipContent>
+															</Tooltip>
+															<Tooltip>
+																<TooltipTrigger
+																	render={
+																		<Button
+																			variant="ghost"
+																			size="icon"
+																			aria-label={`Analytics for ${linkTitle(link)}`}
+																			onClick={() => openAnalytics(link)}
+																		/>
+																	}
+																>
+																	<BarChart3 />
+																</TooltipTrigger>
+																<TooltipContent>Analytics</TooltipContent>
 															</Tooltip>
 															<Tooltip>
 																<TooltipTrigger
@@ -1082,6 +1246,128 @@ export default function Dashboard({
 							</DialogDescription>
 						</DialogHeader>
 						{qrLink ? <QrDownload link={qrLink} /> : null}
+					</DialogContent>
+				</Dialog>
+
+				<Dialog
+					open={analyticsLink !== null}
+					onOpenChange={(open) => {
+						if (!open) setAnalyticsLink(null);
+					}}
+				>
+					<DialogContent className="sm:max-w-lg">
+						<DialogHeader>
+							<DialogTitle>Click analytics</DialogTitle>
+							<DialogDescription>
+								{analyticsLink ? linkTitle(analyticsLink) : null}
+							</DialogDescription>
+						</DialogHeader>
+						{analyticsLink ? (
+							<div className="flex flex-col gap-4">
+								<div className="rounded-lg border bg-muted/30 px-4 py-3">
+									<p className="text-muted-foreground text-sm">Total Clicks</p>
+									<p
+										className="font-semibold text-3xl tabular-nums"
+										data-testid="analytics-total"
+										aria-live="polite"
+									>
+										{analyticsLoading && !analytics
+											? "…"
+											: formatNumber(analyticsTotal)}
+									</p>
+									<p className="text-muted-foreground text-xs">
+										Lifetime successful redirects.
+									</p>
+								</div>
+
+								{analyticsError ? (
+									<div className="flex flex-col items-start gap-2 rounded-lg border border-destructive/40 p-3">
+										<p role="alert" className="text-destructive text-sm">
+											{analyticsError}
+										</p>
+										<Button
+											variant="outline"
+											size="sm"
+											onClick={retryAnalytics}
+										>
+											<RefreshCw data-icon="inline-start" />
+											Try again
+										</Button>
+									</div>
+								) : null}
+
+								{analyticsLoading && !analytics ? (
+									<div
+										className="grid gap-3"
+										role="status"
+										aria-label="Loading analytics"
+									>
+										<Skeleton className="h-4 w-44" />
+										<Skeleton className="h-48 w-full rounded-lg" />
+									</div>
+								) : analytics ? (
+									<div className="flex flex-col gap-3">
+										<div>
+											<p className="font-medium text-sm">
+												Last 30 UTC calendar days
+											</p>
+											<p className="text-muted-foreground text-xs">
+												{analytics.range.start} to {analytics.range.end}
+											</p>
+										</div>
+										<ChartContainer
+											config={{
+												clicks: {
+													color: "var(--foreground)",
+													label: "Clicks",
+												},
+											}}
+											className="h-48 w-full"
+											role="group"
+											aria-label="Daily clicks for the last 30 UTC calendar days"
+										>
+											<BarChart accessibilityLayer data={analyticsChartData}>
+												<CartesianGrid vertical={false} />
+												<XAxis
+													dataKey="label"
+													tickLine={false}
+													axisLine={false}
+													tickMargin={8}
+													minTickGap={24}
+												/>
+												<ChartTooltip
+													cursor={false}
+													content={
+														<ChartTooltipContent
+															labelFormatter={(value) =>
+																`${String(value)} · UTC`
+															}
+														/>
+													}
+												/>
+												<Bar
+													dataKey="clicks"
+													fill="var(--color-clicks)"
+													radius={[3, 3, 0, 0]}
+												/>
+											</BarChart>
+										</ChartContainer>
+										{analyticsEmpty ? (
+											<p className="text-muted-foreground text-sm">
+												{analytics.totalClicks === 0
+													? "No clicks recorded yet. Share the short link to start collecting analytics."
+													: "No clicks in the last 30 UTC days. The lifetime total above is kept."}
+											</p>
+										) : null}
+										<p className="text-muted-foreground text-xs">
+											Repeat openings and bots are counted. Destination loads
+											and unique visitors are not tracked. Updates automatically
+											every 30 seconds.
+										</p>
+									</div>
+								) : null}
+							</div>
+						) : null}
 					</DialogContent>
 				</Dialog>
 
