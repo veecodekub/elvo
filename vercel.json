@@ -31,5 +31,11 @@
 				"service": "web"
 			}
 		}
+	],
+	"crons": [
+		{
+			"path": "/api/internal/retention",
+			"schedule": "15 0 * * *"
+		}
 	]
 }

@@ -17,6 +17,7 @@ export type LinkRow = {
 	title: string | null;
 	destination: string;
 	enabled: boolean;
+	totalClicks: number;
 	slot: number | null;
 	ownerId: string;
 	createdAt: Date;
@@ -174,16 +175,21 @@ export async function listLinks(
 	return { rows, total, page, pageSize, totalPages };
 }
 
+export type RedirectTarget = {
+	id: string;
+	destination: string;
+};
+
 export async function findLinkDestination(
 	db: Database,
 	code: string,
-): Promise<string | null> {
+): Promise<RedirectTarget | null> {
 	const [row] = await db
-		.select({ destination: links.destination })
+		.select({ destination: links.destination, id: links.id })
 		.from(links)
 		.where(and(eq(links.code, code), eq(links.enabled, true)))
 		.limit(1);
-	return row?.destination ?? null;
+	return row ?? null;
 }
 
 export type UpdateLinkChanges = {

@@ -4,8 +4,26 @@ export type ShortLink = {
 	destination: string;
 	enabled: boolean;
 	shortUrl: string;
+	totalClicks: number;
 	createdAt: string;
 	updatedAt: string;
+};
+
+export type LinkAnalyticsDay = {
+	date: string;
+	clicks: number;
+};
+
+export type LinkAnalytics = {
+	code: string;
+	title: string | null;
+	totalClicks: number;
+	days: LinkAnalyticsDay[];
+	range: {
+		start: string;
+		end: string;
+		timeZone: "UTC";
+	};
 };
 
 export type LinkStatusFilter = "all" | "active" | "disabled";
@@ -124,6 +142,21 @@ export async function listLinks(options?: {
 		signal: options?.signal,
 	});
 	return parseResponse<LinksSnapshot>(response);
+}
+
+export async function getLinkAnalytics(
+	code: string,
+	options?: { signal?: AbortSignal },
+): Promise<LinkAnalytics> {
+	const response = await fetch(
+		`${getApiBaseUrl()}/api/links/${encodeURIComponent(code)}/analytics`,
+		{
+			cache: "no-store",
+			credentials: "include",
+			signal: options?.signal,
+		},
+	);
+	return parseResponse<LinkAnalytics>(response);
 }
 
 export async function updateShortLink(

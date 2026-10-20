@@ -10,12 +10,15 @@
 		"start": "bun run dist/index.mjs",
 		"verify:links": "bun run scripts/verify-links.ts",
 		"verify:qr": "bun run scripts/verify-qr.ts",
+		"verify:analytics": "bun run scripts/verify-analytics.ts",
+		"analytics:retention": "bun run scripts/retention.ts",
 		"env:generate": "varlock codegen",
 		"auth:generate": "varlock run -- bun x auth@latest generate --config src/services.ts --output ../../packages/db/src/schema/auth.ts --yes"
 	},
 	"dependencies": {
 		"@elvo/auth": "workspace:*",
 		"@elvo/db": "workspace:*",
+		"@vercel/functions": "^3.10.1",
 		"better-auth": "catalog:",
 		"drizzle-orm": "catalog:",
 		"evlog": "catalog:",

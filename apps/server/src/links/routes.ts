@@ -1,9 +1,10 @@
 import type { createAuth } from "@elvo/auth";
 import type { Database } from "@elvo/db";
-import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 
+import { scheduleClickRecording } from "../analytics/service";
+import { createRequireSession } from "../session";
 import type { AppEnv } from "../types";
 import {
 	createLinkInputSchema,
@@ -53,6 +54,7 @@ function serializeLink(row: LinkRow, publicWebOrigin: string) {
 		destination: row.destination,
 		enabled: row.enabled,
 		shortUrl: `${publicWebOrigin}/${row.code}`,
+		totalClicks: row.totalClicks,
 		createdAt: row.createdAt.toISOString(),
 		updatedAt: row.updatedAt.toISOString(),
 	};
@@ -79,25 +81,7 @@ function unavailablePage(publicWebOrigin: string) {
 
 export function createLinksRoutes(deps: LinksRoutesDeps) {
 	const routes = new Hono<AppEnv>();
-
-	const requireSession: MiddlewareHandler<AppEnv> = async (c, next) => {
-		const session = await deps.auth.api.getSession({
-			headers: c.req.raw.headers,
-		});
-		if (!session?.user) {
-			return c.json(
-				apiError("UNAUTHORIZED", "Sign in to manage your links."),
-				401,
-			);
-		}
-		c.set("user", {
-			id: session.user.id,
-			name: session.user.name,
-			email: session.user.email,
-			image: session.user.image ?? null,
-		});
-		await next();
-	};
+	const requireSession = createRequireSession(deps.auth);
 
 	routes.get("/api/links", requireSession, async (c) => {
 		const parsed = listLinksQuerySchema.safeParse({
@@ -286,14 +270,15 @@ export function createLinksRoutes(deps: LinksRoutesDeps) {
 	// Public redirect on the API origin, mirroring the website route.
 	routes.get("/:code", async (c) => {
 		const code = c.req.param("code");
-		const destination = isLinkCode(code)
+		const target = isLinkCode(code)
 			? await findLinkDestination(deps.db, code)
 			: null;
-		if (!destination) {
+		if (!target) {
 			const page = unavailablePage(deps.publicWebOrigin);
 			return c.html(page.html, page.status, page.headers);
 		}
-		return c.redirect(destination, 302);
+		scheduleClickRecording(deps.db, target.id);
+		return c.redirect(target.destination, 302);
 	});
 
 	return routes;

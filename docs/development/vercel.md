@@ -42,6 +42,7 @@ The repository deploys as one Vercel project with two services, defined in
    | `CORS_ORIGIN`                         | Same public origin as `BETTER_AUTH_URL`                                |
    | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth client; sign-in stays disabled without both         |
    | `PUBLIC_WEB_ORIGIN`                   | Optional; defaults to `CORS_ORIGIN`. Used to build Short Link URLs.    |
+   | `CRON_SECRET`                         | Optional; at least 16 characters. Authenticates daily analytics retention. |
 
    The web service needs no required variables: the binding supplies
    `SERVER_URL`, and the browser uses same-origin `/api/*`.
@@ -85,6 +86,25 @@ bun run db:migrate   # fresh databases
 bun run db:push      # databases created before migrations existed
 ```
 
+## Analytics retention
+
+`vercel.json` schedules a Vercel Cron request to
+`GET /api/internal/retention` every day at 00:15 UTC. Set `CRON_SECRET` on the
+server service so Vercel can send `Authorization: Bearer <CRON_SECRET>`; the
+endpoint returns `401` when the secret is missing or wrong. The request arrives
+through the `/api/*` rewrite and deletes daily Click aggregates older than the
+latest 30 UTC calendar days. Lifetime totals are never touched.
+
+If you prefer not to use Vercel Cron, run the same retention job from any
+scheduler or manually from `apps/server`:
+
+```bash
+bun run analytics:retention
+```
+
+The standalone command reads `DATABASE_URL` directly and does not need
+`CRON_SECRET`.
+
 ## Local development with Services
 
 `vercel dev` runs both services together and injects the binding variables.
@@ -116,3 +136,7 @@ testing services routing locally, then restore it for `bun run dev`.
    neither the destination nor the owner.
 4. Sign in with Google, create a link, and confirm the displayed Short Link
    uses the deployment origin and opens correctly.
+5. Open the link once, then open the Click Analytics dialog and confirm the
+   lifetime total and today's UTC bar update. If Vercel Cron is enabled,
+   `GET <origin>/api/internal/retention` without the bearer secret returns
+   `401`.
