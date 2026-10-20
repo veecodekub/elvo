@@ -2,6 +2,8 @@
 
 This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines Next.js, Hono, and more.
 
+The public URL shortener is live at **[elvo-links.vercel.app](https://elvo-links.vercel.app)**. It creates short links with downloadable QR codes and aggregate click analytics. See the [SEO and discoverability guide](docs/development/seo.md) for the public page map and search setup.
+
 ## Features
 
 - **TypeScript** - For type safety and improved developer experience

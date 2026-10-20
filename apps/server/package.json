@@ -11,6 +11,7 @@
 		"verify:links": "bun run scripts/verify-links.ts",
 		"verify:qr": "bun run scripts/verify-qr.ts",
 		"verify:analytics": "bun run scripts/verify-analytics.ts",
+		"verify:seo": "bun run scripts/verify-seo.ts",
 		"analytics:retention": "bun run scripts/retention.ts",
 		"env:generate": "varlock codegen",
 		"auth:generate": "varlock run -- bun x auth@latest generate --config src/services.ts --output ../../packages/db/src/schema/auth.ts --yes"

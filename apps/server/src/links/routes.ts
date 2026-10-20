@@ -74,7 +74,7 @@ function unavailablePage(publicWebOrigin: string) {
 		status: 404,
 		headers: {
 			"Cache-Control": "no-store",
-			"X-Robots-Tag": "noindex",
+			"X-Robots-Tag": "noindex, nofollow",
 		},
 	} as const;
 }
@@ -278,7 +278,11 @@ export function createLinksRoutes(deps: LinksRoutesDeps) {
 			return c.html(page.html, page.status, page.headers);
 		}
 		scheduleClickRecording(deps.db, target.id);
-		return c.redirect(target.destination, 302);
+		return c.body(null, 302, {
+			"Cache-Control": "no-store",
+			Location: target.destination,
+			"X-Robots-Tag": "noindex, nofollow",
+		});
 	});
 
 	return routes;
