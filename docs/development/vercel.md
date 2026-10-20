@@ -45,7 +45,17 @@ The repository deploys as one Vercel project with two services, defined in
    | `CRON_SECRET`                         | Optional; at least 16 characters. Authenticates daily analytics retention. |
 
    The web service needs no required variables: the binding supplies
-   `SERVER_URL`, and the browser uses same-origin `/api/*`.
+   `SERVER_URL`, and the browser uses same-origin `/api/*`. Optional SEO
+   variables (per environment):
+
+   | Variable                   | Value                                                        |
+   | -------------------------- | ------------------------------------------------------------ |
+   | `NEXT_PUBLIC_SITE_URL`     | Canonical public HTTPS origin for metadata and the sitemap    |
+   | `GOOGLE_SITE_VERIFICATION` | Google Search Console HTML verification token                |
+   | `BING_SITE_VERIFICATION`   | Bing Webmaster Tools `msvalidate.01` token                    |
+
+   These values are applied at build time, so redeploy after changing them.
+   See `docs/development/seo.md` for the full verification and migration steps.
 3. Register `https://<public-origin>/api/auth/callback/google` as an authorized
    redirect URI in the Google Cloud console. The callback is on the project's
    public origin even though the server service handles it.
@@ -140,3 +150,6 @@ testing services routing locally, then restore it for `bun run dev`.
    lifetime total and today's UTC bar update. If Vercel Cron is enabled,
    `GET <origin>/api/internal/retention` without the bearer secret returns
    `401`.
+6. Run `cd apps/server && bun run verify:seo` with the local dev servers, and
+   spot-check `<origin>/robots.txt`, `<origin>/sitemap.xml`, and
+   `<origin>/<code>` headers after deployment. See `docs/development/seo.md`.

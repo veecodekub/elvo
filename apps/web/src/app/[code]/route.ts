@@ -15,7 +15,13 @@ export async function GET(
 	if (!apiBaseUrl) {
 		return new Response(
 			"Server API is not configured. Set SERVER_URL or NEXT_PUBLIC_SERVER_URL.",
-			{ status: 502, headers: { "Cache-Control": "no-store" } },
+			{
+				status: 502,
+				headers: {
+					"Cache-Control": "no-store",
+					"X-Robots-Tag": "noindex, nofollow",
+				},
+			},
 		);
 	}
 
@@ -29,7 +35,11 @@ export async function GET(
 		if (location) {
 			return new Response(null, {
 				status: 302,
-				headers: { "Cache-Control": "no-store", Location: location },
+				headers: {
+					"Cache-Control": "no-store",
+					Location: location,
+					"X-Robots-Tag": "noindex, nofollow",
+				},
 			});
 		}
 	}
@@ -39,7 +49,7 @@ export async function GET(
 		headers: {
 			"Cache-Control": "no-store",
 			"Content-Type": "text/html; charset=utf-8",
-			"X-Robots-Tag": "noindex",
+			"X-Robots-Tag": "noindex, nofollow",
 		},
 	});
 }
