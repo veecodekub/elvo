@@ -32,7 +32,7 @@ export const faqItems = [
 	{
 		question: "Do you collect visitor IP addresses for analytics?",
 		answer:
-			"Click analytics does not store visitor IP addresses, country, device, referrer, or a unique-visitor identifier. Authentication sessions may store standard security metadata; see the privacy policy for details.",
+			"Elvo click analytics does not store visitor IP addresses, country, device, referrer, or a unique-visitor identifier. Vercel Web Analytics and Speed Insights are cookieless and designed to avoid identifying individual visitors. Authentication sessions may store standard security metadata; see the privacy policy for details.",
 	},
 	{
 		question: "How long is analytics data kept?",

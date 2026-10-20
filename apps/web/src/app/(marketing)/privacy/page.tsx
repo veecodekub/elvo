@@ -7,7 +7,7 @@ import { pageMetadata } from "@/lib/seo";
 export const metadata: Metadata = pageMetadata({
 	title: "Privacy Policy",
 	description:
-		"How Elvo Links handles privacy, account information, short links, aggregate click analytics, authentication sessions, and hosting logs.",
+		"How Elvo Links handles privacy, account information, short links, aggregate click and website analytics, authentication sessions, and hosting logs.",
 	path: "/privacy",
 });
 
@@ -15,7 +15,7 @@ export default function PrivacyPage() {
 	return (
 		<LegalPage
 			title="Privacy Policy"
-			description="What Elvo Links collects, why it is needed, and what click analytics deliberately leaves out."
+			description="What Elvo Links collects, why it is needed, and what its click and website analytics deliberately leave out."
 			updated="October 20, 2026"
 		>
 			<p>
@@ -57,6 +57,14 @@ export default function PrivacyPage() {
 						logs, such as IP address, timestamp, requested path, and user agent,
 						for security, reliability, and abuse prevention.
 					</li>
+					<li>
+						<strong className="text-foreground">Website analytics.</strong> We
+						use Vercel Web Analytics and Speed Insights to measure aggregate
+						page traffic and site performance. Vercel processes aggregated usage
+						and performance data for us. These tools do not use cookies or
+						advertising identifiers, and we do not use them to build visitor
+						profiles.
+					</li>
 				</ul>
 			</LegalSection>
 
@@ -75,18 +83,22 @@ export default function PrivacyPage() {
 						limits.
 					</li>
 					<li>Respond to support, privacy, and account requests.</li>
+					<li>
+						Understand aggregate website traffic and measure site performance.
+					</li>
 					<li>Maintain and improve the reliability of the service.</li>
 				</ul>
 				<p>
-					We do not sell personal information. We do not use click analytics for
-					advertising or build visitor profiles.
+					We do not sell personal information. We do not use click or website
+					analytics for advertising or to build visitor profiles.
 				</p>
 			</LegalSection>
 
 			<LegalSection title="Cookies and local storage">
 				<p>
 					Elvo Links uses essential authentication cookies to keep you signed
-					in. The service does not use advertising cookies. Your browser may
+					in. The service does not use advertising cookies. Vercel Web Analytics
+					and Speed Insights are designed not to use cookies. Your browser may
 					also store theme preferences locally.
 				</p>
 			</LegalSection>
@@ -95,7 +107,10 @@ export default function PrivacyPage() {
 				<p>We share information only as needed to operate the service:</p>
 				<ul>
 					<li>Google, for sign-in and account authentication.</li>
-					<li>Vercel, for website and API hosting.</li>
+					<li>
+						Vercel, for website and API hosting, Web Analytics, and Speed
+						Insights.
+					</li>
 					<li>Neon, for the PostgreSQL database.</li>
 					<li>
 						Other providers that help us run, secure, or support the service.
@@ -124,6 +139,10 @@ export default function PrivacyPage() {
 					</li>
 					<li>
 						Authentication sessions expire according to the auth configuration.
+					</li>
+					<li>
+						Website analytics and performance data are retained according to
+						Vercel's service terms.
 					</li>
 				</ul>
 			</LegalSection>
