@@ -96,6 +96,14 @@ bun run db:migrate   # fresh databases
 bun run db:push      # databases created before migrations existed
 ```
 
+## Web Analytics and Speed Insights
+
+The root web layout renders Vercel Web Analytics and Speed Insights. Enable both
+features in the Vercel project's Analytics settings to view collected data.
+Production loads the scripts from `/_vercel/insights/script.js` and
+`/_vercel/speed-insights/script.js`; local development uses Vercel's debug
+scripts.
+
 ## Analytics retention
 
 `vercel.json` schedules a Vercel Cron request to
