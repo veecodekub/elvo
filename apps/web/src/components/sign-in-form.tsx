@@ -10,6 +10,7 @@ import {
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
+import { GoogleIcon } from "./google-icon";
 
 export default function SignInForm() {
 	const params = useSearchParams();
@@ -49,6 +50,7 @@ export default function SignInForm() {
 					</p>
 				) : null}
 				<Button onClick={signIn} disabled={pending} aria-busy={pending}>
+					<GoogleIcon data-icon="inline-start" />
 					{pending ? "Connecting to Google…" : "Continue with Google"}
 				</Button>
 				<p className="text-muted-foreground text-xs">

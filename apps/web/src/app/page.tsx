@@ -6,6 +6,8 @@ import {
 	CardTitle,
 } from "@elvo/ui/components/card";
 import Link from "next/link";
+
+import { GoogleIcon } from "@/components/google-icon";
 export default function Home() {
 	return (
 		<main className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-12 sm:px-6 sm:py-20">
@@ -24,6 +26,7 @@ export default function Home() {
 						nativeButton={false}
 						render={<Link href="/login" />}
 					>
+						<GoogleIcon data-icon="inline-start" />
 						Continue with Google
 					</Button>
 					<Button
