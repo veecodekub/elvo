@@ -3,7 +3,7 @@
 Authenticated owners create Short Links and manage them from the dashboard;
 visitors get an HTTP 302 redirect from `/<code>` on the public website. Issue
 #2 added creation and redirects; issue #3 added search, pagination, editing,
-and enable/disable.
+and enable/disable; issue #4 added downloadable Link QR Codes.
 
 ## Behavior
 
@@ -26,6 +26,13 @@ and enable/disable.
   HTTP 302 to the stored destination. Unknown, disabled, and suspended links
   render a "Link unavailable" page that reveals neither the destination nor the
   owner. Enabling a disabled link restores the redirect.
+- The dashboard's QR dialog previews a black-and-white Link QR Code for the
+  configured public Short Link URL and downloads it as `elvo-<code>.png`. The
+  PNG always encodes `/<code>`, never the Destination URL, so a downloaded
+  code keeps working when the destination is edited. The PNG includes the
+  four-module quiet zone and is flattened to pure black and white. A generation
+  failure is reported in the dialog, which stays open. QR customization and
+  alternative formats are out of scope.
 - Each account can hold at most 100 links, and at most 10 links can be created
   per rolling minute. Both limits are enforced in the database so concurrent
   requests cannot exceed them.
@@ -91,9 +98,27 @@ Schema migrations live in `packages/db/src/migrations`.
    clamping, title/destination edits, disable/re-enable, quota-boundary edits,
    and cross-account edit denial. It deletes every temporary account afterwards.
 
-4. Manually confirm the UX: sign in, search and filter the list, page through
+4. Install Chromium once, then run the Link QR Code verification from the
+   server workspace:
+
+   ```bash
+   cd apps/server
+   bunx playwright install chromium
+   bun run verify:qr
+   ```
+
+   The script creates a temporary owner, signs a session cookie for Chromium,
+   downloads the PNG through the real dashboard dialog, and checks the
+   `elvo-<code>.png` filename. It decodes the PNG with `jsqr`, confirms the
+   exact public Short Link URL and a four-module quiet zone, and verifies the
+   downloaded code redirects. It then edits the destination and checks the same
+   downloaded code reaches the new destination. It also exercises the
+   generation-failure message and the mobile dialog. All temporary accounts are
+   removed afterwards.
+
+5. Manually confirm the UX: sign in, search and filter the list, page through
    ten-link pages, edit a title and destination, disable and re-enable a link
    (including Undo), discard an unsaved edit, copy a link, open the QR dialog,
-   open the short URL and observe the redirect, then visit a disabled or unknown
-   code and confirm the "Link unavailable" page. Check the dashboard at mobile,
-   tablet, and desktop widths.
+   download and scan the PNG, open the short URL and observe the redirect, then
+   visit a disabled or unknown code and confirm the "Link unavailable" page.
+   Check the dashboard at mobile, tablet, and desktop widths.

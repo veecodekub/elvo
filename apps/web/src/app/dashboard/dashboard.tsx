@@ -121,6 +121,8 @@ const GENERIC_CREATE_ERROR =
 const GENERIC_LOAD_ERROR = "We couldn't load your links. Try again.";
 const GENERIC_UPDATE_ERROR =
 	"We couldn't update this link. Check your connection and try again.";
+const QR_DOWNLOAD_ERROR =
+	"We couldn't create the QR code PNG. Check your browser and try again.";
 const SEARCH_DEBOUNCE_MS = 250;
 const UTC_OFFSET_TIME_ZONE = "Asia/Bangkok";
 const EMPTY_QUOTA: LinkQuota = { used: 0, limit: 100, remaining: 100 };
@@ -233,18 +235,62 @@ function LinkStatus({
 	);
 }
 
+function toBlackAndWhitePng(source: HTMLCanvasElement) {
+	const output = document.createElement("canvas");
+	output.width = source.width;
+	output.height = source.height;
+	const context = output.getContext("2d", { willReadFrequently: true });
+	if (!context) {
+		throw new Error("Canvas 2D is unavailable");
+	}
+	// Flatten any antialiased module edges into pure black or white pixels so the
+	// downloaded file is genuinely black-and-white at every device pixel ratio.
+	context.fillStyle = "#FFFFFF";
+	context.fillRect(0, 0, output.width, output.height);
+	context.drawImage(source, 0, 0);
+	const image = context.getImageData(0, 0, output.width, output.height);
+	const { data } = image;
+	for (let index = 0; index < data.length; index += 4) {
+		const alpha = data[index + 3] ?? 0;
+		const luminance =
+			0.2126 * (data[index] ?? 0) +
+			0.7152 * (data[index + 1] ?? 0) +
+			0.0722 * (data[index + 2] ?? 0);
+		const value = alpha >= 128 && luminance < 128 ? 0 : 255;
+		data[index] = value;
+		data[index + 1] = value;
+		data[index + 2] = value;
+		data[index + 3] = 255;
+	}
+	context.putImageData(image, 0, 0);
+	return output.toDataURL("image/png");
+}
+
 function QrDownload({ link }: { link: ShortLink }) {
 	const canvas = useRef<HTMLCanvasElement>(null);
+	const [downloadError, setDownloadError] = useState<string | null>(null);
 
 	function download() {
-		const dataUrl = canvas.current?.toDataURL("image/png");
-		if (!dataUrl) return;
-		const anchor = document.createElement("a");
-		anchor.href = dataUrl;
-		anchor.download = `elvo-${link.code}.png`;
-		document.body.append(anchor);
-		anchor.click();
-		anchor.remove();
+		setDownloadError(null);
+		try {
+			const current = canvas.current;
+			if (!current) {
+				throw new Error("QR canvas is not mounted");
+			}
+			const dataUrl = toBlackAndWhitePng(current);
+			if (!dataUrl.startsWith("data:image/png")) {
+				throw new Error("QR canvas did not produce a PNG");
+			}
+			const anchor = document.createElement("a");
+			anchor.href = dataUrl;
+			anchor.download = `elvo-${link.code}.png`;
+			document.body.append(anchor);
+			anchor.click();
+			anchor.remove();
+		} catch {
+			setDownloadError(QR_DOWNLOAD_ERROR);
+			toast.error(QR_DOWNLOAD_ERROR);
+		}
 	}
 
 	return (
@@ -254,14 +300,23 @@ function QrDownload({ link }: { link: ShortLink }) {
 				value={link.shortUrl}
 				size={240}
 				marginSize={4}
+				bgColor="#FFFFFF"
+				fgColor="#000000"
+				level="M"
 				title={`QR code for ${link.shortUrl}`}
 				role="img"
 				aria-label={`QR code for ${link.shortUrl}`}
 			/>
 			<code className="break-all text-center text-xs">{link.shortUrl}</code>
-			<p className="text-muted-foreground text-sm">
-				Anyone who scans this code opens the short link.
+			<p className="text-center text-muted-foreground text-sm">
+				This QR code opens the short link and keeps working when the destination
+				changes.
 			</p>
+			{downloadError ? (
+				<p role="alert" className="text-destructive text-sm">
+					{downloadError}
+				</p>
+			) : null}
 			<Button onClick={download}>
 				<Download data-icon="inline-start" />
 				Download PNG
