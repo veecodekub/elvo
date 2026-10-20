@@ -1,0 +1,1 @@
+ALTER TABLE "links" ADD COLUMN "enabled" boolean DEFAULT true NOT NULL;

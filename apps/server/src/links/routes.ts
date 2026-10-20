@@ -10,9 +10,11 @@ import {
 	destinationErrorMessage,
 	isLinkCode,
 	LINK_QUOTA_LIMIT,
+	listLinksQuerySchema,
 	parseDestination,
 	renderLinkUnavailablePage,
 	titleErrorMessage,
+	updateLinkInputSchema,
 } from "./domain";
 import {
 	countLinks,
@@ -21,6 +23,8 @@ import {
 	LinkLimitError,
 	type LinkRow,
 	listLinks,
+	type UpdateLinkChanges,
+	updateLink,
 } from "./service";
 
 export type LinksRoutesDeps = {
@@ -33,6 +37,7 @@ type ApiErrorCode =
 	| "INVALID_REQUEST"
 	| "INVALID_URL"
 	| "INVALID_TITLE"
+	| "NOT_FOUND"
 	| "QUOTA_REACHED"
 	| "RATE_LIMITED"
 	| "UNAUTHORIZED";
@@ -46,8 +51,10 @@ function serializeLink(row: LinkRow, publicWebOrigin: string) {
 		code: row.code,
 		title: row.title,
 		destination: row.destination,
+		enabled: row.enabled,
 		shortUrl: `${publicWebOrigin}/${row.code}`,
 		createdAt: row.createdAt.toISOString(),
+		updatedAt: row.updatedAt.toISOString(),
 	};
 }
 
@@ -93,17 +100,112 @@ export function createLinksRoutes(deps: LinksRoutesDeps) {
 	};
 
 	routes.get("/api/links", requireSession, async (c) => {
+		const parsed = listLinksQuerySchema.safeParse({
+			q: c.req.query("q"),
+			status: c.req.query("status"),
+			page: c.req.query("page"),
+		});
+		if (!parsed.success) {
+			return c.json(
+				apiError("INVALID_REQUEST", "Search, status, or page is invalid."),
+				400,
+			);
+		}
+
 		const ownerId = c.get("user").id;
-		const [rows, used] = await Promise.all([
-			listLinks(deps.db, ownerId),
+		const [page, used] = await Promise.all([
+			listLinks(deps.db, ownerId, {
+				query: parsed.data.q || undefined,
+				status: parsed.data.status,
+				page: parsed.data.page,
+			}),
 			countLinks(deps.db, ownerId),
 		]);
 
 		return c.json({
-			links: rows.map((row) => serializeLink(row, deps.publicWebOrigin)),
+			links: page.rows.map((row) => serializeLink(row, deps.publicWebOrigin)),
 			quota: serializeQuota(used),
+			page: page.page,
+			pageSize: page.pageSize,
+			total: page.total,
+			totalPages: page.totalPages,
 		});
 	});
+
+	routes.patch(
+		"/api/links/:code",
+		bodyLimit({ maxSize: 16 * 1024 }),
+		requireSession,
+		async (c) => {
+			const code = c.req.param("code");
+			if (!isLinkCode(code)) {
+				return c.json(apiError("NOT_FOUND", "Link not found."), 404);
+			}
+
+			const body = await c.req.json().catch(() => null);
+			if (body === null || typeof body !== "object" || Array.isArray(body)) {
+				return c.json(
+					apiError(
+						"INVALID_REQUEST",
+						"Send a JSON body with the fields to update.",
+					),
+					400,
+				);
+			}
+
+			const parsed = updateLinkInputSchema.safeParse(body);
+			if (!parsed.success) {
+				const field = parsed.error.issues[0]?.path[0];
+				if (field === "title") {
+					return c.json(
+						apiError("INVALID_TITLE", titleErrorMessage, "title"),
+						400,
+					);
+				}
+				if (field === "destination") {
+					return c.json(
+						apiError("INVALID_URL", destinationErrorMessage, "destination"),
+						400,
+					);
+				}
+				return c.json(
+					apiError(
+						"INVALID_REQUEST",
+						parsed.error.issues[0]?.message ??
+							"Send at least one field to update.",
+					),
+					400,
+				);
+			}
+
+			const changes: UpdateLinkChanges = {};
+			if (parsed.data.title !== undefined) {
+				changes.title = parsed.data.title ? parsed.data.title : null;
+			}
+			if (parsed.data.destination !== undefined) {
+				const destination = parseDestination(parsed.data.destination);
+				if (!destination) {
+					return c.json(
+						apiError("INVALID_URL", destinationErrorMessage, "destination"),
+						400,
+					);
+				}
+				changes.destination = destination.toString();
+			}
+			if (parsed.data.enabled !== undefined) {
+				changes.enabled = parsed.data.enabled;
+			}
+
+			const row = await updateLink(deps.db, c.get("user").id, code, changes);
+			if (!row) {
+				return c.json(apiError("NOT_FOUND", "Link not found."), 404);
+			}
+
+			return c.json({
+				link: serializeLink(row, deps.publicWebOrigin),
+			});
+		},
+	);
 
 	routes.post(
 		"/api/links",

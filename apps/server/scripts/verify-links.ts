@@ -22,15 +22,28 @@ const API_ORIGIN = process.env.VERIFY_API_ORIGIN ?? "http://localhost:3000";
 const WEB_ORIGIN = process.env.VERIFY_WEB_ORIGIN ?? "http://localhost:3001";
 const SECRET = process.env.BETTER_AUTH_SECRET ?? "";
 
+type LinkRecord = {
+	code: string;
+	title: string | null;
+	destination: string;
+	enabled: boolean;
+	shortUrl: string;
+	createdAt: string;
+	updatedAt: string;
+};
+
 type LinkPayload = {
-	link: {
-		code: string;
-		title: string | null;
-		destination: string;
-		shortUrl: string;
-		createdAt: string;
-	};
+	link: LinkRecord;
 	quota: { used: number; limit: number; remaining: number };
+};
+
+type ListPayload = {
+	links: LinkRecord[];
+	quota: { used: number; limit: number; remaining: number };
+	page: number;
+	pageSize: number;
+	total: number;
+	totalPages: number;
 };
 
 let passed = 0;
@@ -96,13 +109,46 @@ async function createLink(
 	return { status: response.status, payload, error };
 }
 
-async function listLinks(cookie: string) {
-	const response = await apiFetch("/api/links", { headers: { cookie } });
-	const json = (await response.json()) as {
-		links: LinkPayload["link"][];
-		quota: LinkPayload["quota"];
-	};
+async function listLinks(
+	cookie: string,
+	params: Record<string, string> = {},
+) {
+	const search = new URLSearchParams(params).toString();
+	const response = await apiFetch(
+		`/api/links${search ? `?${search}` : ""}`,
+		{ headers: { cookie } },
+	);
+	const json = (await response.json()) as ListPayload;
 	return { status: response.status, ...json };
+}
+
+async function updateLink(
+	cookie: string,
+	code: string,
+	body: Record<string, unknown>,
+): Promise<{
+	status: number;
+	payload: { link: LinkRecord } | null;
+	error: unknown;
+}> {
+	const response = await apiFetch(`/api/links/${code}`, {
+		method: "PATCH",
+		headers: { cookie, "content-type": "application/json" },
+		body: JSON.stringify(body),
+	});
+	let payload: { link: LinkRecord } | null = null;
+	let error: unknown = null;
+	try {
+		const json = (await response.json()) as Record<string, unknown>;
+		if (response.ok) {
+			payload = json as { link: LinkRecord };
+		} else {
+			error = json.error;
+		}
+	} catch {
+		// Non-JSON response.
+	}
+	return { status: response.status, payload, error };
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -135,6 +181,7 @@ async function main() {
 		other: await createActor("other"),
 		rate: await createActor("rate"),
 		quota: await createActor("quota"),
+		manage: await createActor("manage"),
 	};
 	const createdCodes: string[] = [];
 
@@ -413,8 +460,8 @@ async function main() {
 		const quotaList = await listLinks(actors.quota.cookie);
 		check(
 			"the account holds exactly 100 links",
-			quotaList.links.length === 100 && quotaList.quota.used === 100,
-			`links=${quotaList.links.length} used=${quotaList.quota.used}`,
+			quotaList.total === 100 && quotaList.quota.used === 100,
+			`total=${quotaList.total} used=${quotaList.quota.used}`,
 		);
 		const quotaAgain = await createLink(actors.quota.cookie, {
 			destination: "https://example.com/quota/over",
@@ -423,6 +470,310 @@ async function main() {
 			"a creation beyond the quota is rejected",
 			quotaAgain.status === 409,
 			`status=${quotaAgain.status}`,
+		);
+
+		console.log("\nSearch, pagination, edit, and enable/disable");
+		const marketing = await createLink(actors.manage.cookie, {
+			destination: "https://www.Example.com/Launch",
+			title: "Marketing Site",
+		});
+		const docs = await createLink(actors.manage.cookie, {
+			destination: "https://docs.example.org/guide",
+			title: "Docs Portal",
+		});
+		const percent = await createLink(actors.manage.cookie, {
+			destination: "https://report.example.net/100%25",
+			title: "Budget 100%",
+		});
+		for (const result of [marketing, docs, percent]) {
+			if (result.payload) createdCodes.push(result.payload.link.code);
+		}
+		const marketingCode = marketing.payload?.link.code ?? "";
+		const docsCode = docs.payload?.link.code ?? "";
+		const percentCode = percent.payload?.link.code ?? "";
+		check(
+			"three links are available for management checks",
+			[marketing, docs, percent].every((result) => result.status === 201),
+		);
+
+		const byTitle = await listLinks(actors.manage.cookie, { q: "marketing" });
+		check(
+			"search matches Link Titles case-insensitively",
+			byTitle.status === 200 &&
+				byTitle.total === 1 &&
+				byTitle.links[0]?.code === marketingCode,
+			`total=${byTitle.total}`,
+		);
+		const byUrl = await listLinks(actors.manage.cookie, {
+			q: "DOCS.EXAMPLE.ORG",
+		});
+		check(
+			"search matches Destination URLs case-insensitively",
+			byUrl.status === 200 &&
+				byUrl.total === 1 &&
+				byUrl.links[0]?.code === docsCode,
+			`total=${byUrl.total}`,
+		);
+		const literalPercent = await listLinks(actors.manage.cookie, { q: "100%" });
+		check(
+			"search treats LIKE wildcards literally",
+			literalPercent.status === 200 &&
+				literalPercent.total === 1 &&
+				literalPercent.links[0]?.code === percentCode,
+			`total=${literalPercent.total}`,
+		);
+		const noMatches = await listLinks(actors.manage.cookie, {
+			q: "no-such-link",
+		});
+		check(
+			"a search without matches returns an empty result",
+			noMatches.status === 200 &&
+				noMatches.total === 0 &&
+				noMatches.links.length === 0,
+			`total=${noMatches.total}`,
+		);
+		const isolatedSearch = await listLinks(actors.other.cookie, {
+			q: "marketing",
+		});
+		check(
+			"search never crosses account boundaries",
+			isolatedSearch.status === 200 && isolatedSearch.total === 0,
+			`total=${isolatedSearch.total}`,
+		);
+		const ordered = await listLinks(actors.manage.cookie);
+		check(
+			"matching links keep newest-first ordering",
+			ordered.links.map((link) => link.code).join(",") ===
+				[percentCode, docsCode, marketingCode].join(","),
+			ordered.links.map((link) => link.code).join(","),
+		);
+
+		const edited = await updateLink(actors.manage.cookie, marketingCode, {
+			title: "Launch hub",
+			destination: "https://example.com/launch",
+		});
+		check(
+			"the owner can edit title and destination",
+			edited.status === 200 &&
+				edited.payload?.link.title === "Launch hub" &&
+				edited.payload?.link.destination === "https://example.com/launch",
+			`status=${edited.status}`,
+		);
+		check(
+			"editing preserves the Link Code, public URL, and ownership",
+			edited.payload?.link.code === marketingCode &&
+				edited.payload?.link.shortUrl === `${WEB_ORIGIN}/${marketingCode}`,
+		);
+		const editedRedirect = await apiFetch(`/${marketingCode}`);
+		check(
+			"the public URL redirects to the edited destination",
+			editedRedirect.status === 302 &&
+				editedRedirect.headers.get("location") ===
+					"https://example.com/launch",
+			`status=${editedRedirect.status} location=${editedRedirect.headers.get("location")}`,
+		);
+		const clearedTitle = await updateLink(
+			actors.manage.cookie,
+			marketingCode,
+			{ title: null },
+		);
+		check(
+			"clearing the optional Link Title is allowed",
+			clearedTitle.status === 200 && clearedTitle.payload?.link.title === null,
+			`status=${clearedTitle.status}`,
+		);
+
+		const invalidUrl = await updateLink(actors.manage.cookie, docsCode, {
+			destination: "ftp://example.com/file",
+		});
+		check(
+			"unsupported edit destinations are rejected with INVALID_URL",
+			invalidUrl.status === 400 && errorCode(invalidUrl.error) === "INVALID_URL",
+			`status=${invalidUrl.status} code=${errorCode(invalidUrl.error)}`,
+		);
+		const invalidTitle = await updateLink(actors.manage.cookie, docsCode, {
+			title: "x".repeat(121),
+		});
+		check(
+			"overlong edit titles are rejected with INVALID_TITLE",
+			invalidTitle.status === 400 &&
+				errorCode(invalidTitle.error) === "INVALID_TITLE",
+			`status=${invalidTitle.status} code=${errorCode(invalidTitle.error)}`,
+		);
+		const immutableCode = await updateLink(actors.manage.cookie, docsCode, {
+			code: "abc2345",
+		});
+		check(
+			"the Link Code cannot be edited through the API",
+			immutableCode.status === 400,
+			`status=${immutableCode.status}`,
+		);
+		const emptyUpdate = await updateLink(
+			actors.manage.cookie,
+			docsCode,
+			{},
+		);
+		check(
+			"an empty update is rejected",
+			emptyUpdate.status === 400,
+			`status=${emptyUpdate.status}`,
+		);
+		const deleteAttempt = await apiFetch(`/api/links/${docsCode}`, {
+			method: "DELETE",
+			headers: { cookie: actors.manage.cookie },
+		});
+		check(
+			"there is no permanent-deletion endpoint",
+			deleteAttempt.status >= 400,
+			`status=${deleteAttempt.status}`,
+		);
+
+		const foreignEdit = await updateLink(actors.other.cookie, docsCode, {
+			destination: "https://evil.example/overwrite",
+		});
+		check(
+			"another account cannot edit a link by guessing its code",
+			foreignEdit.status === 404 &&
+				errorCode(foreignEdit.error) === "NOT_FOUND",
+			`status=${foreignEdit.status} code=${errorCode(foreignEdit.error)}`,
+		);
+		const afterForeignEdit = await listLinks(actors.manage.cookie, {
+			q: "docs portal",
+		});
+		check(
+			"a denied edit leaves the owner's link unchanged",
+			afterForeignEdit.links[0]?.destination ===
+				"https://docs.example.org/guide",
+			afterForeignEdit.links[0]?.destination,
+		);
+		const unknownEdit = await updateLink(
+			actors.other.cookie,
+			"mmmmmmm",
+			{ enabled: false },
+		);
+		check(
+			"updating an unknown code returns NOT_FOUND",
+			unknownEdit.status === 404 &&
+				errorCode(unknownEdit.error) === "NOT_FOUND",
+			`status=${unknownEdit.status} code=${errorCode(unknownEdit.error)}`,
+		);
+
+		const disabled = await updateLink(actors.manage.cookie, docsCode, {
+			enabled: false,
+		});
+		check(
+			"the owner can disable a link",
+			disabled.status === 200 && disabled.payload?.link.enabled === false,
+			`status=${disabled.status}`,
+		);
+		const disabledApi = await apiFetch(`/${docsCode}`);
+		const disabledApiBody = await disabledApi.text();
+		check(
+			"a disabled link shows the unavailable page without revealing its destination",
+			disabledApi.status === 404 &&
+				disabledApiBody.includes("Link unavailable") &&
+				!disabledApiBody.includes("docs.example.org"),
+			`status=${disabledApi.status}`,
+		);
+		const disabledWeb = await fetch(`${WEB_ORIGIN}/${docsCode}`, {
+			redirect: "manual",
+		});
+		const disabledWebBody = await disabledWeb.text();
+		check(
+			"the website also shows the unavailable page for a disabled link",
+			disabledWeb.status === 404 &&
+				disabledWebBody.includes("Link unavailable"),
+			`status=${disabledWeb.status}`,
+		);
+		const activeOnly = await listLinks(actors.manage.cookie, {
+			status: "active",
+		});
+		check(
+			"the Active filter omits disabled links",
+			activeOnly.status === 200 &&
+				!activeOnly.links.some((link) => link.code === docsCode),
+		);
+		const disabledOnly = await listLinks(actors.manage.cookie, {
+			status: "disabled",
+		});
+		check(
+			"the Disabled filter shows only disabled links",
+			disabledOnly.status === 200 &&
+				disabledOnly.total === 1 &&
+				disabledOnly.links[0]?.code === docsCode,
+			`total=${disabledOnly.total}`,
+		);
+		const searchAndFilter = await listLinks(actors.manage.cookie, {
+			q: "docs",
+			status: "disabled",
+		});
+		check(
+			"search and status filters combine",
+			searchAndFilter.total === 1 &&
+				searchAndFilter.links[0]?.code === docsCode,
+			`total=${searchAndFilter.total}`,
+		);
+		const enabledAgain = await updateLink(actors.manage.cookie, docsCode, {
+			enabled: true,
+		});
+		check(
+			"the owner can enable a disabled link again",
+			enabledAgain.status === 200 && enabledAgain.payload?.link.enabled === true,
+			`status=${enabledAgain.status}`,
+		);
+		const reenabledRedirect = await apiFetch(`/${docsCode}`);
+		check(
+			"enabling restores the redirect",
+			reenabledRedirect.status === 302 &&
+				reenabledRedirect.headers.get("location") ===
+					"https://docs.example.org/guide",
+			`status=${reenabledRedirect.status}`,
+		);
+
+		const healthyPage = await listLinks(actors.quota.cookie);
+		check(
+			"listing paginates ten links per page",
+			healthyPage.status === 200 &&
+				healthyPage.page === 1 &&
+				healthyPage.pageSize === 10 &&
+				healthyPage.total === 100 &&
+				healthyPage.totalPages === 10 &&
+				healthyPage.links.length === 10,
+			`page=${healthyPage.page} size=${healthyPage.pageSize} total=${healthyPage.total} pages=${healthyPage.totalPages}`,
+		);
+		const lastPage = await listLinks(actors.quota.cookie, { page: "10" });
+		check(
+			"the last page holds the remaining links",
+			lastPage.status === 200 &&
+				lastPage.page === 10 &&
+				lastPage.links.length === 10,
+			`page=${lastPage.page} links=${lastPage.links.length}`,
+		);
+		const clampedPage = await listLinks(actors.quota.cookie, { page: "99" });
+		check(
+			"a page beyond the result set is clamped to the last page",
+			clampedPage.status === 200 && clampedPage.page === 10,
+			`page=${clampedPage.page}`,
+		);
+		const invalidPage = await listLinks(actors.quota.cookie, { page: "0" });
+		check(
+			"an invalid page number is rejected",
+			invalidPage.status === 400,
+			`status=${invalidPage.status}`,
+		);
+		const quotaEditCode = quotaCreated[0]?.payload?.link.code ?? "";
+		const quotaEdit = quotaEditCode
+			? await updateLink(actors.quota.cookie, quotaEditCode, {
+					destination: "https://example.com/quota/edited",
+					title: "Edited at the quota",
+				})
+			: null;
+		check(
+			"links remain editable at the 100-link quota",
+			quotaEdit?.status === 200 &&
+				quotaEdit.payload?.link.destination ===
+					"https://example.com/quota/edited",
+			`status=${quotaEdit?.status}`,
 		);
 	} finally {
 		const ids = Object.values(actors).map((actor) => actor.userId);
