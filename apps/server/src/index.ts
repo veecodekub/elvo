@@ -46,7 +46,15 @@ app.use(
 
 app.on(["POST", "GET"], "/api/auth/*", async (c) => auth.handler(c.req.raw));
 
-app.route("/", createLinksRoutes({ db, auth, publicWebOrigin }));
+app.route(
+	"/",
+	createLinksRoutes({
+		db,
+		auth,
+		publicWebOrigin,
+		trustedOrigins: [ENV.CORS_ORIGIN],
+	}),
+);
 app.route(
 	"/",
 	createAnalyticsRoutes({

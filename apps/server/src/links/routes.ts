@@ -2,7 +2,6 @@ import type { createAuth } from "@elvo/auth";
 import type { Database } from "@elvo/db";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-
 import { scheduleClickRecording } from "../analytics/service";
 import { createRequireSession } from "../session";
 import type { AppEnv } from "../types";
@@ -17,6 +16,7 @@ import {
 	titleErrorMessage,
 	updateLinkInputSchema,
 } from "./domain";
+import { createTrustedJsonMutationMiddleware } from "./request-security";
 import {
 	countLinks,
 	createLink,
@@ -32,6 +32,7 @@ export type LinksRoutesDeps = {
 	db: Database;
 	auth: ReturnType<typeof createAuth>;
 	publicWebOrigin: string;
+	trustedOrigins?: readonly string[];
 };
 
 type ApiErrorCode =
@@ -82,6 +83,10 @@ function unavailablePage(publicWebOrigin: string) {
 export function createLinksRoutes(deps: LinksRoutesDeps) {
 	const routes = new Hono<AppEnv>();
 	const requireSession = createRequireSession(deps.auth);
+	const requireMutationSecurity = createTrustedJsonMutationMiddleware([
+		...(deps.trustedOrigins ?? []),
+		deps.publicWebOrigin,
+	]);
 
 	routes.get("/api/links", requireSession, async (c) => {
 		const parsed = listLinksQuerySchema.safeParse({
@@ -120,6 +125,7 @@ export function createLinksRoutes(deps: LinksRoutesDeps) {
 		"/api/links/:code",
 		bodyLimit({ maxSize: 16 * 1024 }),
 		requireSession,
+		requireMutationSecurity,
 		async (c) => {
 			const code = c.req.param("code");
 			if (!isLinkCode(code)) {
@@ -195,6 +201,7 @@ export function createLinksRoutes(deps: LinksRoutesDeps) {
 		"/api/links",
 		bodyLimit({ maxSize: 16 * 1024 }),
 		requireSession,
+		requireMutationSecurity,
 		async (c) => {
 			const body = await c.req.json().catch(() => null);
 			if (body === null || typeof body !== "object" || Array.isArray(body)) {
