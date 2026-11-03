@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createDb, type Database } from "@elvo/db";
 import { session, user } from "@elvo/db/schema/auth";
 import { neonConfig } from "@neondatabase/serverless";
-import { inArray, sql } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { startIsolatedDatabase } from "../../scripts/test-database";
 import { createLink, LinkLimitError, updateLink } from "./service";
 
@@ -16,11 +16,6 @@ beforeAll(async () => {
 	isolatedDatabase = await startIsolatedDatabase();
 	neonConfig.fetchEndpoint = isolatedDatabase.endpoint;
 	database = createDb({ DATABASE_URL: isolatedDatabase.databaseUrl });
-	await database.execute(sql`
-		ALTER TABLE link_rate_limits
-		ADD COLUMN IF NOT EXISTS reservations timestamptz[] NOT NULL
-		DEFAULT ARRAY[]::timestamptz[]
-	`);
 });
 
 afterAll(async () => {
