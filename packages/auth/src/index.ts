@@ -47,6 +47,7 @@ export function createAuth(
 				httpOnly: true,
 			},
 		},
+		rateLimit: { storage: "database" },
 		plugins: [],
 	});
 }
