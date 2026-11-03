@@ -11,6 +11,7 @@
  * Run from apps/server: `bun run verify:qr`
  */
 
+import "./test-database-preload";
 import { readFile } from "node:fs/promises";
 import { session, user } from "@elvo/db/schema/auth";
 import { makeSignature } from "better-auth/crypto";

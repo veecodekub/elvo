@@ -9,6 +9,7 @@
  * Run from apps/server: `bun run verify:links`
  */
 
+import "./test-database-preload";
 import { session, user } from "@elvo/db/schema/auth";
 import { links } from "@elvo/db/schema/links";
 import { makeSignature } from "better-auth/crypto";
@@ -109,15 +110,11 @@ async function createLink(
 	return { status: response.status, payload, error };
 }
 
-async function listLinks(
-	cookie: string,
-	params: Record<string, string> = {},
-) {
+async function listLinks(cookie: string, params: Record<string, string> = {}) {
 	const search = new URLSearchParams(params).toString();
-	const response = await apiFetch(
-		`/api/links${search ? `?${search}` : ""}`,
-		{ headers: { cookie } },
-	);
+	const response = await apiFetch(`/api/links${search ? `?${search}` : ""}`, {
+		headers: { cookie },
+	});
 	const json = (await response.json()) as ListPayload;
 	return { status: response.status, ...json };
 }
@@ -568,15 +565,12 @@ async function main() {
 		check(
 			"the public URL redirects to the edited destination",
 			editedRedirect.status === 302 &&
-				editedRedirect.headers.get("location") ===
-					"https://example.com/launch",
+				editedRedirect.headers.get("location") === "https://example.com/launch",
 			`status=${editedRedirect.status} location=${editedRedirect.headers.get("location")}`,
 		);
-		const clearedTitle = await updateLink(
-			actors.manage.cookie,
-			marketingCode,
-			{ title: null },
-		);
+		const clearedTitle = await updateLink(actors.manage.cookie, marketingCode, {
+			title: null,
+		});
 		check(
 			"clearing the optional Link Title is allowed",
 			clearedTitle.status === 200 && clearedTitle.payload?.link.title === null,
@@ -588,7 +582,8 @@ async function main() {
 		});
 		check(
 			"unsupported edit destinations are rejected with INVALID_URL",
-			invalidUrl.status === 400 && errorCode(invalidUrl.error) === "INVALID_URL",
+			invalidUrl.status === 400 &&
+				errorCode(invalidUrl.error) === "INVALID_URL",
 			`status=${invalidUrl.status} code=${errorCode(invalidUrl.error)}`,
 		);
 		const invalidTitle = await updateLink(actors.manage.cookie, docsCode, {
@@ -608,11 +603,7 @@ async function main() {
 			immutableCode.status === 400,
 			`status=${immutableCode.status}`,
 		);
-		const emptyUpdate = await updateLink(
-			actors.manage.cookie,
-			docsCode,
-			{},
-		);
+		const emptyUpdate = await updateLink(actors.manage.cookie, docsCode, {});
 		check(
 			"an empty update is rejected",
 			emptyUpdate.status === 400,
@@ -646,11 +637,9 @@ async function main() {
 				"https://docs.example.org/guide",
 			afterForeignEdit.links[0]?.destination,
 		);
-		const unknownEdit = await updateLink(
-			actors.other.cookie,
-			"mmmmmmm",
-			{ enabled: false },
-		);
+		const unknownEdit = await updateLink(actors.other.cookie, "mmmmmmm", {
+			enabled: false,
+		});
 		check(
 			"updating an unknown code returns NOT_FOUND",
 			unknownEdit.status === 404 &&
@@ -718,7 +707,8 @@ async function main() {
 		});
 		check(
 			"the owner can enable a disabled link again",
-			enabledAgain.status === 200 && enabledAgain.payload?.link.enabled === true,
+			enabledAgain.status === 200 &&
+				enabledAgain.payload?.link.enabled === true,
 			`status=${enabledAgain.status}`,
 		);
 		const reenabledRedirect = await apiFetch(`/${docsCode}`);

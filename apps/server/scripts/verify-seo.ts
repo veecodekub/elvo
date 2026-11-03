@@ -8,6 +8,7 @@
  * Run from apps/server: `bun run verify:seo`
  */
 
+import "./test-database-preload";
 import { user } from "@elvo/db/schema/auth";
 import { links } from "@elvo/db/schema/links";
 import { eq } from "drizzle-orm";

@@ -6,6 +6,7 @@
  * Or let the Vercel Cron entry call `/api/internal/retention` daily.
  */
 
+import "./test-database-preload";
 import { deleteExpiredDailyClicks } from "../src/analytics/service";
 import { db } from "../src/services";
 
