@@ -90,8 +90,10 @@ Do not hardcode illustrative domains in application code.
   increments are not lost and a failure leaves both aggregates consistent.
   Retention removes rows before the latest 30 UTC days while `total_clicks`
   remains intact.
-- `link_rate_limits` keeps one row per owner with the rolling window start and
-  count. A guarded `ON CONFLICT DO UPDATE` serializes concurrent creations.
+- `link_rate_limits` keeps one row per owner with at most ten reservation
+  timestamps. A guarded `ON CONFLICT DO UPDATE` serializes concurrent creations.
+  Legacy window columns and a compatibility trigger share this budget with old
+  server instances during upgrades and rollback.
 
 ## Migrations
 
@@ -99,9 +101,11 @@ Schema migrations live in `packages/db/src/migrations`.
 
 - After changing the schema, run `bun run db:generate` from the repository root.
 - Fresh databases: `bun run db:migrate`.
-- Databases created with `db:push` before migrations existed: use
-  `bun run db:push`. The first generated migration is a full baseline, so
-  `db:migrate` is intended for new databases.
+- Existing databases initialized with `db:push`: compare their schema with the
+  historical migration snapshot and establish the matching migration-history
+  baseline before running `bun run db:migrate`. Do not replay initial CREATE
+  statements or substitute `db:push`; it does not install the rolling-limit
+  compatibility trigger. See [link-rate-limit.md](./link-rate-limit.md).
 
 ## Verification
 
