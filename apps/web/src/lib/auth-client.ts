@@ -23,7 +23,7 @@ function getAuthBaseUrl() {
 	}
 
 	// Reached only while collecting build output, before a request exists.
-	return "/api/auth";
+	return undefined;
 }
 
 export const authClient = createAuthClient({
