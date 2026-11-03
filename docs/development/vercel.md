@@ -92,9 +92,13 @@ Database migrations are not part of a deployment. Apply them from a machine
 with `DATABASE_URL` set:
 
 ```bash
-bun run db:migrate   # fresh databases
-bun run db:push      # databases created before migrations existed
+bun run db:migrate
 ```
+
+For existing databases initialized with `db:push`, first verify the schema and
+establish the matching migration-history baseline. Do not replay the initial
+schema or use `db:push` in place of migrations: the rolling-limit compatibility
+trigger requires the checked-in SQL. See [link-rate-limit.md](./link-rate-limit.md).
 
 ## Web Analytics and Speed Insights
 

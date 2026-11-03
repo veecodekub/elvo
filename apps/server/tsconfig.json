@@ -1,11 +1,11 @@
 {
-  "extends": "@elvo/config/tsconfig.base.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    },
-    "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx"
-  }
+	"extends": "@elvo/config/tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"paths": {
+			"@/*": ["./src/*"]
+		},
+		"jsx": "react-jsx",
+		"jsxImportSource": "hono/jsx"
+	}
 }

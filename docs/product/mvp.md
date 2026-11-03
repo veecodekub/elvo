@@ -44,6 +44,6 @@ Use English UI, a minimal spacious layout, mobile support, and system-aware ligh
 
 The MVP is complete when a new user can sign in with Google, create a short link, download its QR code, share it, and return to view click analytics on mobile. Verify destination editing, disabled/suspended behavior, quotas, ownership enforcement, and administrative access as part of this flow.
 
-## Existing Implementation Gap
+## Existing Implementation Status
 
-At the time of documentation, the scaffold enables email/password authentication in `packages/auth/src/index.ts` and uses an email/password sign-in form. Google-only authentication and the product flows above remain implementation work.
+The original email/password scaffold has been replaced with Google-only sign-in. Accounts, sessions, and links persist in the configured database. Authenticated link creation and management, redirects, QR downloads, and aggregate Click Analytics are implemented. A new account starts with an empty dashboard; the app does not seed demo links. This status records implementation progress and does not change the confirmed product scope above.

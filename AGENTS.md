@@ -20,7 +20,9 @@ Run commands from the repository root using Bun 1.3.14:
 - `bun install`: install workspace dependencies and generate environment types.
 - `bun run dev`: start web on port 3001 and API on port 3000. Use `dev:web` or `dev:server` to run one app.
 - `bun run build`: build applications through Turborepo.
+- `bun run test`: run Bun tests discovered from the workspace (`*.test.ts`).
 - `bun run check-types`: type-check workspace packages.
+- `bun run check:ci`: run non-mutating Biome checks for CI.
 - `bun run check`: run Biome linting and formatting; this command modifies files.
 - `bun run db:generate` / `bun run db:migrate`: generate SQL migrations / apply migrations. `db:push` directly synchronizes a development database.
 - `bun run auth:generate`: regenerate the auth schema after changing auth plugins or schema options; review the resulting migration needs.
@@ -31,7 +33,7 @@ Use strict TypeScript, tab indentation, and double-quoted JavaScript strings. Bi
 
 ## Testing Guidelines
 
-No automated test framework, test script, or coverage threshold is currently configured. Validate changes with `bun run check-types`, `bun run build`, and focused runtime checks of affected routes or flows. Include reproducible verification steps in PRs; document the runner and naming convention when introducing tests.
+Use Bun's built-in test runner. Name test files `*.test.ts` and run the workspace suite with `bun run test` (or `bun test` for a focused path). Validate changes with `bun run check-types`, `bun run check:ci`, and `bun run build`. Database-backed verification scripts require the disposable PGlite fixture; follow `docs/development/database-verification.md` for the safe server, browser, and retention commands. Never point verification scripts at a shared or production database.
 
 ## Commit & Pull Request Guidelines
 

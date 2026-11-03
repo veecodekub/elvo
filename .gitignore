@@ -56,3 +56,6 @@ coverage
 .cache
 tmp
 temp
+
+# Locally installed agent skills are not repository source
+.agents/

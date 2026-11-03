@@ -14,7 +14,9 @@
 		"verify:seo": "bun run scripts/verify-seo.ts",
 		"analytics:retention": "bun run scripts/retention.ts",
 		"env:generate": "varlock codegen",
-		"auth:generate": "varlock run -- bun x auth@latest generate --config src/services.ts --output ../../packages/db/src/schema/auth.ts --yes"
+		"auth:generate": "varlock run -- bun x auth@latest generate --config src/services.ts --output ../../packages/db/src/schema/auth.ts --yes",
+		"dev:isolated": "bun --preload ./scripts/test-database-preload.ts --hot ./src/index.ts",
+		"test:database": "bun run scripts/test-database.ts"
 	},
 	"dependencies": {
 		"@elvo/auth": "workspace:*",
@@ -35,6 +37,8 @@
 		"playwright": "^1.64.1",
 		"pngjs": "^7.0.0",
 		"tsdown": "^0.23.0",
-		"typescript": "catalog:"
+		"typescript": "catalog:",
+		"@electric-sql/pglite": "^0.5.14",
+		"@neondatabase/serverless": "^1.1.0"
 	}
 }

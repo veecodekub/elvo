@@ -10,6 +10,7 @@
  * Run from apps/server: `bun run verify:analytics`
  */
 
+import "./test-database-preload";
 import { session, user } from "@elvo/db/schema/auth";
 import { linkDailyClicks, links } from "@elvo/db/schema/links";
 import { makeSignature } from "better-auth/crypto";
@@ -25,12 +26,15 @@ import {
 } from "../src/analytics/domain";
 import { deleteExpiredDailyClicks } from "../src/analytics/service";
 import { db } from "../src/services";
+import {
+	installAnalyticsFailureTrigger,
+	removeAnalyticsFailureTrigger,
+} from "./analytics-failure-trigger";
 
 const API_ORIGIN = process.env.VERIFY_API_ORIGIN ?? "http://localhost:3000";
 const WEB_ORIGIN = process.env.VERIFY_WEB_ORIGIN ?? "http://localhost:3001";
 const SECRET = process.env.BETTER_AUTH_SECRET ?? "";
 const DESTINATION = "https://example.com/analytics-verification";
-const FAILURE_FUNCTION = "verify_analytics_fail_daily";
 
 type LinkRecord = {
 	code: string;
@@ -73,24 +77,33 @@ function check(name: string, ok: boolean, details = "") {
 async function createActor(label: string): Promise<Actor> {
 	const userId = `verify-analytics-${label}-${crypto.randomUUID()}`;
 	const token = crypto.randomUUID();
-	await db.insert(user).values({
-		id: userId,
-		name: `Verify Analytics ${label}`,
-		email: `${userId}@verify.invalid`,
-		emailVerified: true,
-	});
-	await db.insert(session).values({
-		id: crypto.randomUUID(),
-		token,
-		userId,
-		expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-	});
-	const signature = await makeSignature(token, SECRET);
-	return {
-		userId,
-		cookie: `better-auth.session_token=${token}.${signature}`,
-		cookieValue: `${token}.${signature}`,
-	};
+	let userCreated = false;
+	try {
+		await db.insert(user).values({
+			id: userId,
+			name: `Verify Analytics ${label}`,
+			email: `${userId}@verify.invalid`,
+			emailVerified: true,
+		});
+		userCreated = true;
+		await db.insert(session).values({
+			id: crypto.randomUUID(),
+			token,
+			userId,
+			expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+		});
+		const signature = await makeSignature(token, SECRET);
+		return {
+			userId,
+			cookie: `better-auth.session_token=${token}.${signature}`,
+			cookieValue: `${token}.${signature}`,
+		};
+	} catch (error) {
+		if (userCreated) {
+			await db.delete(user).where(eq(user.id, userId));
+		}
+		throw error;
+	}
 }
 
 async function createLink(cookie: string, title: string) {
@@ -161,45 +174,18 @@ function todayClicks(payload: AnalyticsPayload): number {
 	return payload.days.find((day) => day.date === today)?.clicks ?? -1;
 }
 
-async function installFailureTrigger() {
-	await removeFailureTrigger();
-	await db.execute(
-		sql.raw(`
-			CREATE FUNCTION ${FAILURE_FUNCTION}() RETURNS trigger AS $$
-			BEGIN
-				RAISE EXCEPTION 'simulated analytics recording failure';
-			END;
-			$$ LANGUAGE plpgsql
-		`),
-	);
-	await db.execute(
-		sql.raw(`
-			CREATE TRIGGER ${FAILURE_FUNCTION}_trigger
-			BEFORE INSERT OR UPDATE ON link_daily_clicks
-			FOR EACH ROW EXECUTE FUNCTION ${FAILURE_FUNCTION}()
-		`),
-	);
-}
-
-async function removeFailureTrigger() {
-	await db.execute(
-		sql.raw(
-			`DROP TRIGGER IF EXISTS ${FAILURE_FUNCTION}_trigger ON link_daily_clicks`,
-		),
-	);
-	await db.execute(sql.raw(`DROP FUNCTION IF EXISTS ${FAILURE_FUNCTION}()`));
-}
-
 async function main() {
 	if (!SECRET) {
 		throw new Error("BETTER_AUTH_SECRET is not loaded; run from apps/server");
 	}
 
-	const owner = await createActor("owner");
-	const other = await createActor("other");
+	let owner: Actor | undefined;
+	let other: Actor | undefined;
 	let chromiumBrowser: Browser | null = null;
 
 	try {
+		owner = await createActor("owner");
+		other = await createActor("other");
 		console.log("\nOwned analytics access");
 		const main = await createLink(
 			owner.cookie,
@@ -370,15 +356,24 @@ async function main() {
 			`Analytics failure ${crypto.randomUUID().slice(0, 8)}`,
 		);
 		const failureCode = failureLink.link?.code ?? "";
-		await installFailureTrigger();
+		const failureLinkId = (
+			await db
+				.select({ id: links.id })
+				.from(links)
+				.where(eq(links.code, failureCode))
+				.limit(1)
+		)[0]?.id;
+		if (!failureLinkId) throw new Error("failure fixture link id is missing");
+
 		let failureResponse: Response;
 		try {
+			await installAnalyticsFailureTrigger(db, failureLinkId);
 			failureResponse = await publicRedirect(failureCode);
 			// Let the detached recording attempt run while the failing trigger is
 			// still installed; the redirect response itself is already complete.
 			await Bun.sleep(1_000);
 		} finally {
-			await removeFailureTrigger();
+			await removeAnalyticsFailureTrigger(db);
 		}
 		check(
 			"a redirect still succeeds while analytics recording fails",
@@ -674,10 +669,14 @@ async function main() {
 		await dialog.waitFor({ state: "hidden" });
 		check("the analytics dialog dismisses with the keyboard", true);
 	} finally {
-		await removeFailureTrigger().catch(() => undefined);
+		await removeAnalyticsFailureTrigger(db).catch(() => undefined);
 		await chromiumBrowser?.close();
-		const ids = [owner.userId, other.userId];
-		await db.delete(user).where(inArray(user.id, ids));
+		const ids = [owner?.userId, other?.userId].filter((id): id is string =>
+			Boolean(id),
+		);
+		if (ids.length > 0) {
+			await db.delete(user).where(inArray(user.id, ids));
+		}
 	}
 
 	console.log(`\n${passed} passed, ${failed} failed`);

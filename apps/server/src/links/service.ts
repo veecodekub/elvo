@@ -81,31 +81,33 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 /**
- * Concurrency-safe rolling-window rate limit. The conditional upsert is
- * evaluated under a row lock, so concurrent creations serialize and can never
- * exceed ten reservations per minute per owner.
+ * Concurrency-safe rolling-window limiter. The owner row is locked by the
+ * upsert, so concurrent creations count and append against the same array.
  */
 async function reserveRateLimit(
 	db: Database,
 	ownerId: string,
+	reservedAt?: Date,
 ): Promise<boolean> {
+	const timestamp = reservedAt ? sql`${reservedAt}::timestamptz` : sql`now()`;
 	const result = await db.execute(sql`
-		INSERT INTO link_rate_limits (owner_id, window_started_at, window_count)
-		VALUES (${ownerId}, now(), 1)
+		INSERT INTO link_rate_limits (owner_id, reservations)
+		VALUES (${ownerId}, ARRAY[${timestamp}]::timestamptz[])
 		ON CONFLICT (owner_id) DO UPDATE SET
-			window_count = CASE
-				WHEN link_rate_limits.window_started_at > now() - make_interval(secs => ${LINK_RATE_WINDOW_SECONDS})
-					THEN link_rate_limits.window_count + 1
-				ELSE 1
-			END,
-			window_started_at = CASE
-				WHEN link_rate_limits.window_started_at > now() - make_interval(secs => ${LINK_RATE_WINDOW_SECONDS})
-					THEN link_rate_limits.window_started_at
-				ELSE now()
-			END
-		WHERE link_rate_limits.window_started_at <= now() - make_interval(secs => ${LINK_RATE_WINDOW_SECONDS})
-			OR link_rate_limits.window_count < ${LINK_RATE_LIMIT}
-		RETURNING window_count
+			reservations = (
+				SELECT COALESCE(
+					array_agg(active.reserved_at ORDER BY active.reserved_at),
+					ARRAY[]::timestamptz[]
+				)
+				FROM unnest(link_rate_limits.reservations) AS active(reserved_at)
+				WHERE active.reserved_at > ${timestamp} - make_interval(secs => ${LINK_RATE_WINDOW_SECONDS})
+			) || ARRAY[${timestamp}]::timestamptz[]
+		WHERE (
+			SELECT count(*)
+			FROM unnest(link_rate_limits.reservations) AS active(reserved_at)
+			WHERE active.reserved_at > ${timestamp} - make_interval(secs => ${LINK_RATE_WINDOW_SECONDS})
+		) < ${LINK_RATE_LIMIT}
+		RETURNING cardinality(reservations)
 	`);
 
 	return result.rows.length > 0;
@@ -233,8 +235,9 @@ export async function createLink(
 	ownerId: string,
 	input: CreateLinkInput,
 	generateCode: () => string = generateLinkCode,
+	rateLimitTime?: Date,
 ): Promise<LinkRow> {
-	const allowed = await reserveRateLimit(db, ownerId);
+	const allowed = await reserveRateLimit(db, ownerId, rateLimitTime);
 	if (!allowed) {
 		throw new LinkLimitError("RATE_LIMITED");
 	}

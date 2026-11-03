@@ -90,8 +90,10 @@ Do not hardcode illustrative domains in application code.
   increments are not lost and a failure leaves both aggregates consistent.
   Retention removes rows before the latest 30 UTC days while `total_clicks`
   remains intact.
-- `link_rate_limits` keeps one row per owner with the rolling window start and
-  count. A guarded `ON CONFLICT DO UPDATE` serializes concurrent creations.
+- `link_rate_limits` keeps one row per owner with at most ten reservation
+  timestamps. A guarded `ON CONFLICT DO UPDATE` serializes concurrent creations.
+  Legacy window columns and a compatibility trigger share this budget with old
+  server instances during upgrades and rollback.
 
 ## Migrations
 
@@ -99,79 +101,24 @@ Schema migrations live in `packages/db/src/migrations`.
 
 - After changing the schema, run `bun run db:generate` from the repository root.
 - Fresh databases: `bun run db:migrate`.
-- Databases created with `db:push` before migrations existed: use
-  `bun run db:push`. The first generated migration is a full baseline, so
-  `db:migrate` is intended for new databases.
+- Existing databases initialized with `db:push`: compare their schema with the
+  historical migration snapshot and establish the matching migration-history
+  baseline before running `bun run db:migrate`. Do not replay initial CREATE
+  statements or substitute `db:push`; it does not install the rolling-limit
+  compatibility trigger. See [link-rate-limit.md](./link-rate-limit.md).
 
 ## Verification
 
-1. Install dependencies and apply the schema:
+Run unit tests and type checks from the repository root:
 
-   ```bash
-   bun install
-   bun run db:push
-   ```
+```bash
+bun run test
+bun run check-types
+```
 
-2. Run unit tests and type checks:
-
-   ```bash
-   bun test
-   bun run check-types
-   ```
-
-3. Start the apps with `bun run dev`, then run the end-to-end verification from
-   the server workspace:
-
-   ```bash
-   cd apps/server
-   bun run verify:links
-   ```
-
-   The script creates temporary accounts and verifies validation, persistence,
-   newest-first listing, account isolation, HTTP 302 redirects on both origins,
-   the unavailable page, collision retries, concurrent rate limiting
-   (10 per minute), concurrent quota enforcement (100 per account), search by
-   title/URL (including wildcard escaping), status filters, pagination and page
-   clamping, title/destination edits, disable/re-enable, quota-boundary edits,
-   and cross-account edit denial. It deletes every temporary account afterwards.
-
-4. Install Chromium once, then run the Link QR Code verification from the
-   server workspace:
-
-   ```bash
-   cd apps/server
-   bunx playwright install chromium
-   bun run verify:qr
-   ```
-
-   The script creates a temporary owner, signs a session cookie for Chromium,
-   downloads the PNG through the real dashboard dialog, and checks the
-   `elvo-<code>.png` filename. It decodes the PNG with `jsqr`, confirms the
-   exact public Short Link URL and a four-module quiet zone, and verifies the
-   downloaded code redirects. It then edits the destination and checks the same
-   downloaded code reaches the new destination. It also exercises the
-   generation-failure message and the mobile dialog. All temporary accounts are
-   removed afterwards.
-
-5. With the dev servers still running, verify aggregate analytics:
-
-   ```bash
-   cd apps/server
-   bun run verify:analytics
-   ```
-
-   The script checks owner-only access and isolation, the 30-day UTC series with
-   zero-activity days, repeat and concurrent redirect increments, disabled and
-   unknown links not counting, redirects surviving a simulated recording
-   failure, retention preserving lifetime totals and removing expired days, and
-   the real dashboard on desktop and mobile. It also checks the loading, empty,
-   failure, retry, and automatic-refresh behavior, then removes all temporary
-   accounts.
-
-6. Manually confirm the UX: sign in, search and filter the list, page through
-   ten-link pages, edit a title and destination, disable and re-enable a link
-   (including Undo), discard an unsaved edit, copy a link, open the QR dialog,
-   download and scan the PNG, open the short URL and observe the redirect, open
-   the Click Analytics dialog and confirm the lifetime total and 30-day chart,
-   then visit a disabled or unknown code and confirm the "Link unavailable"
-   page. Check the dashboard at mobile, tablet, and desktop widths.
+Database-backed verification requires the isolated in-memory PGlite database and
+Neon HTTP endpoint. Follow
+[`database-verification.md`](database-verification.md) for the fixture, API and
+website launch commands, verification scripts, Chromium prerequisite, and safe
+retention invocation. Those scripts fail closed unless explicitly pointed at the
+fixture. Do not run them against a shared or production database.
