@@ -22,11 +22,6 @@ import {
 	CardTitle,
 } from "@elvo/ui/components/card";
 import {
-	ChartContainer,
-	ChartTooltip,
-	ChartTooltipContent,
-} from "@elvo/ui/components/chart";
-import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
@@ -91,7 +86,6 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	Copy,
-	Download,
 	Link2,
 	MoreHorizontal,
 	Pencil,
@@ -100,9 +94,15 @@ import {
 	Search,
 	X,
 } from "lucide-react";
-import { QRCodeCanvas } from "qrcode.react";
-import { type FormEvent, useEffect, useRef, useState } from "react";
-import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
+import dynamic from "next/dynamic";
+import {
+	createContext,
+	type FormEvent,
+	useContext,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { toast } from "sonner";
 
 import type { authClient } from "@/lib/auth-client";
@@ -114,14 +114,83 @@ import {
 	type ShortLink,
 } from "@/lib/links-api";
 import {
-	linkAnalyticsQueryOptions,
 	linkKeys,
 	linksQueryOptions,
-	patchLinkInSnapshots,
 	setQuotaInSnapshots,
 	useToggleLinkMutation,
 	useUpdateLinkMutation,
 } from "@/lib/links-queries";
+
+const DashboardDialogCloseContext = createContext<(() => void) | null>(null);
+
+function FeatureDialogLoading({
+	title,
+	description,
+	loadingLabel,
+	className,
+}: {
+	title: string;
+	description: string;
+	loadingLabel: string;
+	className: string;
+}) {
+	const onClose = useContext(DashboardDialogCloseContext);
+	return (
+		<Dialog open onOpenChange={(open) => (!open ? onClose?.() : undefined)}>
+			<DialogContent className={className} aria-busy="true">
+				<DialogHeader>
+					<DialogTitle>{title}</DialogTitle>
+					<DialogDescription>{description}</DialogDescription>
+				</DialogHeader>
+				<div
+					className="grid gap-3"
+					role="status"
+					aria-busy="true"
+					aria-label={loadingLabel}
+				>
+					{title === "Preparing code" ? (
+						<Skeleton className="mx-auto h-60 w-60 rounded-lg" />
+					) : (
+						<>
+							<Skeleton className="h-4 w-44" />
+							<Skeleton className="h-48 w-full rounded-lg" />
+						</>
+					)}
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+function QrCodeDialogLoading() {
+	return (
+		<FeatureDialogLoading
+			title="Preparing code"
+			description="The QR code is being prepared."
+			loadingLabel="Loading QR code"
+			className="sm:max-w-md"
+		/>
+	);
+}
+
+function LinkAnalyticsDialogLoading() {
+	return (
+		<FeatureDialogLoading
+			title="Loading chart"
+			description="Click analytics is loading."
+			loadingLabel="Loading click analytics"
+			className="sm:max-w-lg"
+		/>
+	);
+}
+
+const QrCodeDialog = dynamic(() => import("./qr-code-dialog"), {
+	loading: QrCodeDialogLoading,
+});
+
+const LinkAnalyticsDialog = dynamic(() => import("./analytics-dialog"), {
+	loading: LinkAnalyticsDialogLoading,
+});
 
 const DESTINATION_ERROR =
 	"Enter a valid HTTP or HTTPS URL, for example https://example.com.";
@@ -130,10 +199,6 @@ const GENERIC_CREATE_ERROR =
 const GENERIC_LOAD_ERROR = "We couldn't load your links. Try again.";
 const GENERIC_UPDATE_ERROR =
 	"We couldn't update this link. Check your connection and try again.";
-const GENERIC_ANALYTICS_ERROR =
-	"We couldn't load analytics. Check your connection and try again.";
-const QR_DOWNLOAD_ERROR =
-	"We couldn't create the QR code PNG. Check your browser and try again.";
 const SEARCH_DEBOUNCE_MS = 250;
 const UTC_OFFSET_TIME_ZONE = "Asia/Bangkok";
 const EMPTY_QUOTA: LinkQuota = { used: 0, limit: 100, remaining: 100 };
@@ -197,16 +262,6 @@ function formatCreatedAtShort(value: string) {
 	}).format(date);
 }
 
-function formatAnalyticsDay(value: string) {
-	const date = new Date(`${value}T00:00:00.000Z`);
-	if (Number.isNaN(date.getTime())) return value;
-	return new Intl.DateTimeFormat("en-GB", {
-		day: "numeric",
-		month: "short",
-		timeZone: "UTC",
-	}).format(date);
-}
-
 function formatNumber(value: number) {
 	return value.toLocaleString("en-US");
 }
@@ -257,96 +312,6 @@ function LinkStatus({
 				{link.enabled ? "Disable link" : "Enable link"}
 			</TooltipContent>
 		</Tooltip>
-	);
-}
-
-function toBlackAndWhitePng(source: HTMLCanvasElement) {
-	const output = document.createElement("canvas");
-	output.width = source.width;
-	output.height = source.height;
-	const context = output.getContext("2d", { willReadFrequently: true });
-	if (!context) {
-		throw new Error("Canvas 2D is unavailable");
-	}
-	// Flatten any antialiased module edges into pure black or white pixels so the
-	// downloaded file is genuinely black-and-white at every device pixel ratio.
-	context.fillStyle = "#FFFFFF";
-	context.fillRect(0, 0, output.width, output.height);
-	context.drawImage(source, 0, 0);
-	const image = context.getImageData(0, 0, output.width, output.height);
-	const { data } = image;
-	for (let index = 0; index < data.length; index += 4) {
-		const alpha = data[index + 3] ?? 0;
-		const luminance =
-			0.2126 * (data[index] ?? 0) +
-			0.7152 * (data[index + 1] ?? 0) +
-			0.0722 * (data[index + 2] ?? 0);
-		const value = alpha >= 128 && luminance < 128 ? 0 : 255;
-		data[index] = value;
-		data[index + 1] = value;
-		data[index + 2] = value;
-		data[index + 3] = 255;
-	}
-	context.putImageData(image, 0, 0);
-	return output.toDataURL("image/png");
-}
-
-function QrDownload({ link }: { link: ShortLink }) {
-	const canvas = useRef<HTMLCanvasElement>(null);
-	const [downloadError, setDownloadError] = useState<string | null>(null);
-
-	function download() {
-		setDownloadError(null);
-		try {
-			const current = canvas.current;
-			if (!current) {
-				throw new Error("QR canvas is not mounted");
-			}
-			const dataUrl = toBlackAndWhitePng(current);
-			if (!dataUrl.startsWith("data:image/png")) {
-				throw new Error("QR canvas did not produce a PNG");
-			}
-			const anchor = document.createElement("a");
-			anchor.href = dataUrl;
-			anchor.download = `elvo-${link.code}.png`;
-			document.body.append(anchor);
-			anchor.click();
-			anchor.remove();
-		} catch {
-			setDownloadError(QR_DOWNLOAD_ERROR);
-			toast.error(QR_DOWNLOAD_ERROR);
-		}
-	}
-
-	return (
-		<div className="flex flex-col items-center gap-4">
-			<QRCodeCanvas
-				ref={canvas}
-				value={link.shortUrl}
-				size={240}
-				marginSize={4}
-				bgColor="#FFFFFF"
-				fgColor="#000000"
-				level="M"
-				title={`QR code for ${link.shortUrl}`}
-				role="img"
-				aria-label={`QR code for ${link.shortUrl}`}
-			/>
-			<code className="break-all text-center text-xs">{link.shortUrl}</code>
-			<p className="text-center text-muted-foreground text-sm">
-				This QR code opens the short link and keeps working when the destination
-				changes.
-			</p>
-			{downloadError ? (
-				<p role="alert" className="text-destructive text-sm">
-					{downloadError}
-				</p>
-			) : null}
-			<Button onClick={download}>
-				<Download data-icon="inline-start" />
-				Download PNG
-			</Button>
-		</div>
 	);
 }
 
@@ -402,16 +367,6 @@ export default function Dashboard({
 				: GENERIC_LOAD_ERROR
 			: null;
 
-	const analyticsCode = analyticsLink?.code ?? null;
-	const analyticsQuery = useQuery(linkAnalyticsQueryOptions(analyticsCode));
-	const analytics = analyticsQuery.data ?? null;
-	const analyticsLoading = analyticsQuery.isFetching && !analytics;
-	const analyticsError = analyticsQuery.error
-		? analyticsQuery.error instanceof LinksApiError
-			? analyticsQuery.error.message
-			: GENERIC_ANALYTICS_ERROR
-		: null;
-
 	const createLinkMutation = useMutation({ mutationFn: createShortLink });
 	const updateLinkMutation = useUpdateLinkMutation();
 	const toggleLinkMutation = useToggleLinkMutation();
@@ -433,18 +388,6 @@ export default function Dashboard({
 			setPage(resolvedPage);
 		}
 	}, [linksSnapshot?.page, page]);
-
-	useEffect(() => {
-		if (!analytics) return;
-		patchLinkInSnapshots(queryClient, analytics.code, {
-			totalClicks: analytics.totalClicks,
-		});
-		setCreatedLink((current) =>
-			current?.code === analytics.code
-				? { ...current, totalClicks: analytics.totalClicks }
-				: current,
-		);
-	}, [analytics, queryClient]);
 
 	function clearFilters() {
 		setSearchInput("");
@@ -550,10 +493,6 @@ export default function Dashboard({
 		setAnalyticsLink(link);
 	}
 
-	function retryAnalytics() {
-		void analyticsQuery.refetch();
-	}
-
 	function openEdit(link: ShortLink) {
 		setEditError(null);
 		setEditing(link);
@@ -632,16 +571,6 @@ export default function Dashboard({
 		pageInfo.page * pageInfo.pageSize,
 		pageInfo.total,
 	);
-	const analyticsTotal =
-		analytics?.totalClicks ?? analyticsLink?.totalClicks ?? 0;
-	const analyticsChartData =
-		analytics?.days.map((day) => ({
-			clicks: day.clicks,
-			date: day.date,
-			label: formatAnalyticsDay(day.date),
-		})) ?? [];
-	const analyticsEmpty =
-		analytics?.days.every((day) => day.clicks === 0) ?? false;
 
 	return (
 		<TooltipProvider>
@@ -1165,144 +1094,22 @@ export default function Dashboard({
 					</CardFooter>
 				</Card>
 
-				<Dialog
-					open={qrLink !== null}
-					onOpenChange={(open) => {
-						if (!open) setQrLink(null);
-					}}
-				>
-					<DialogContent className="sm:max-w-md">
-						<DialogHeader>
-							<DialogTitle>QR code</DialogTitle>
-							<DialogDescription>
-								Scan or download the QR code for this short link.
-							</DialogDescription>
-						</DialogHeader>
-						{qrLink ? <QrDownload link={qrLink} /> : null}
-					</DialogContent>
-				</Dialog>
+				{qrLink ? (
+					<DashboardDialogCloseContext.Provider value={() => setQrLink(null)}>
+						<QrCodeDialog link={qrLink} onClose={() => setQrLink(null)} />
+					</DashboardDialogCloseContext.Provider>
+				) : null}
 
-				<Dialog
-					open={analyticsLink !== null}
-					onOpenChange={(open) => {
-						if (!open) setAnalyticsLink(null);
-					}}
-				>
-					<DialogContent className="sm:max-w-lg">
-						<DialogHeader>
-							<DialogTitle>Click analytics</DialogTitle>
-							<DialogDescription>
-								{analyticsLink ? linkTitle(analyticsLink) : null}
-							</DialogDescription>
-						</DialogHeader>
-						{analyticsLink ? (
-							<div className="flex flex-col gap-4">
-								<div className="rounded-lg border bg-muted/30 px-4 py-3">
-									<p className="text-muted-foreground text-sm">Total Clicks</p>
-									<p
-										className="font-semibold text-3xl tabular-nums"
-										data-testid="analytics-total"
-										aria-live="polite"
-									>
-										{analyticsLoading && !analytics
-											? "…"
-											: formatNumber(analyticsTotal)}
-									</p>
-									<p className="text-muted-foreground text-xs">
-										Lifetime successful redirects.
-									</p>
-								</div>
-
-								{analyticsError && !analyticsLoading ? (
-									<div className="flex flex-col items-start gap-2 rounded-lg border border-destructive/40 p-3">
-										<p role="alert" className="text-destructive text-sm">
-											{analyticsError}
-										</p>
-										<Button
-											variant="outline"
-											size="sm"
-											onClick={retryAnalytics}
-										>
-											<RefreshCw data-icon="inline-start" />
-											Try again
-										</Button>
-									</div>
-								) : null}
-
-								{analyticsLoading && !analytics ? (
-									<div
-										className="grid gap-3"
-										role="status"
-										aria-label="Loading analytics"
-									>
-										<Skeleton className="h-4 w-44" />
-										<Skeleton className="h-48 w-full rounded-lg" />
-									</div>
-								) : analytics ? (
-									<div className="flex flex-col gap-3">
-										<div>
-											<p className="font-medium text-sm">
-												Last 30 UTC calendar days
-											</p>
-											<p className="text-muted-foreground text-xs">
-												{analytics.range.start} to {analytics.range.end}
-											</p>
-										</div>
-										<ChartContainer
-											config={{
-												clicks: {
-													color: "var(--foreground)",
-													label: "Clicks",
-												},
-											}}
-											className="h-48 w-full"
-											role="group"
-											aria-label="Daily clicks for the last 30 UTC calendar days"
-										>
-											<BarChart accessibilityLayer data={analyticsChartData}>
-												<CartesianGrid vertical={false} />
-												<XAxis
-													dataKey="label"
-													tickLine={false}
-													axisLine={false}
-													tickMargin={8}
-													minTickGap={24}
-												/>
-												<ChartTooltip
-													cursor={false}
-													content={
-														<ChartTooltipContent
-															labelFormatter={(value) =>
-																`${String(value)} · UTC`
-															}
-														/>
-													}
-												/>
-												<Bar
-													dataKey="clicks"
-													fill="var(--color-clicks)"
-													radius={[3, 3, 0, 0]}
-												/>
-											</BarChart>
-										</ChartContainer>
-										{analyticsEmpty ? (
-											<p className="text-muted-foreground text-sm">
-												{analytics.totalClicks === 0
-													? "No clicks recorded yet. Share the short link to start collecting analytics."
-													: "No clicks in the last 30 UTC days. The lifetime total above is kept."}
-											</p>
-										) : null}
-										<p className="text-muted-foreground text-xs">
-											Repeat openings and bots are counted. Destination loads
-											and unique visitors are not tracked. Updates automatically
-											every 30 seconds.
-										</p>
-									</div>
-								) : null}
-							</div>
-						) : null}
-					</DialogContent>
-				</Dialog>
+				{analyticsLink ? (
+					<DashboardDialogCloseContext.Provider
+						value={() => setAnalyticsLink(null)}
+					>
+						<LinkAnalyticsDialog
+							link={analyticsLink}
+							onClose={() => setAnalyticsLink(null)}
+						/>
+					</DashboardDialogCloseContext.Provider>
+				) : null}
 
 				<Dialog
 					open={editing !== null}
