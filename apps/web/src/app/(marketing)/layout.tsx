@@ -4,9 +4,11 @@ import Footer from "@/components/footer";
 
 export default function MarketingLayout({ children }: { children: ReactNode }) {
 	return (
-		<div className="flex flex-1 flex-col">
+		<div className="relative isolate flex flex-1 flex-col">
 			{children}
-			<Footer />
+			<div className="relative z-10">
+				<Footer />
+			</div>
 		</div>
 	);
 }
