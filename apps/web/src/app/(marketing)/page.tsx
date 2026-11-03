@@ -19,7 +19,7 @@ import { pageMetadata } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = pageMetadata({
-	title: `${SITE_NAME} — Free URL Shortener with QR Codes & Click Analytics`,
+	title: `${SITE_NAME} | Free URL Shortener with QR Codes and Click Analytics`,
 	description: SITE_DESCRIPTION,
 	path: "/",
 	absoluteTitle: true,
@@ -34,25 +34,25 @@ export const metadata: Metadata = pageMetadata({
 
 const features = [
 	{
-		title: "Stable short links",
+		title: "Change the destination later",
 		description:
-			"Seven-character codes that stay the same, even when you edit the destination later.",
+			"Update the destination or title at any time. The seven-character code stays the same, so links you have already shared keep working.",
 		href: "/url-shortener",
-		linkLabel: "How short links work",
+		linkLabel: "See how short links work",
 	},
 	{
-		title: "QR codes that keep working",
+		title: "Reuse the same QR code",
 		description:
-			"Download a black-and-white PNG. The code points to your short link, not the destination.",
+			"Download a black-and-white PNG QR code for your short URL. Change the destination later without replacing QR codes you have already shared.",
 		href: "/qr-code-generator",
 		linkLabel: "Explore QR codes",
 	},
 	{
-		title: "Clicks, not surveillance",
+		title: "Understand clicks without visitor profiles",
 		description:
-			"See lifetime clicks and a 30-day daily chart. Repeat clicks count. Visitor IP addresses do not.",
+			"See lifetime click totals and daily click counts for the latest 30 UTC days. Elvo link analytics do not store visitor IP addresses or calculate unique visitors.",
 		href: "/link-analytics",
-		linkLabel: "See click analytics",
+		linkLabel: "Explore click analytics",
 	},
 ] as const;
 
@@ -60,17 +60,17 @@ const steps = [
 	{
 		title: "Sign in with Google",
 		description:
-			"Create your personal account without another password to manage.",
+			"Create a free account with Google. There is no Elvo password to set.",
 	},
 	{
-		title: "Shorten a destination",
+		title: "Add a destination URL",
 		description:
-			"Paste an http or https URL, add an optional title, and let Elvo generate the code.",
+			"Enter an HTTP or HTTPS URL. Elvo creates a seven-character code; add an optional title to recognize it in your dashboard.",
 	},
 	{
-		title: "Share and measure",
+		title: "Share and review clicks",
 		description:
-			"Copy the short link, download its QR code, and open analytics when you need them.",
+			"Share the short URL or download its QR code. Review lifetime clicks and daily activity for the latest 30 UTC days.",
 	},
 ] as const;
 
@@ -109,10 +109,7 @@ export default function Home() {
 	return (
 		<>
 			<JsonLd data={jsonLd} />
-			<div
-				aria-hidden="true"
-				className="pointer-events-none fixed inset-0 z-0"
-			>
+			<div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0">
 				<div
 					className="absolute inset-0 dark:hidden"
 					style={{ background: "#fff" }}
@@ -149,15 +146,15 @@ export default function Home() {
 					<div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
 						<div className="flex max-w-3xl flex-col items-start gap-6">
 							<p className="font-medium text-muted-foreground text-sm">
-								Elvo Links · Short Links. Clean Experience.
+								Short links, QR codes, and click analytics
 							</p>
 							<h1 className="text-balance font-semibold text-4xl tracking-tight sm:text-6xl">
-								Short links with QR codes and clear click analytics.
+								Short links you can update after sharing.
 							</h1>
 							<p className="max-w-2xl text-lg text-muted-foreground">
-								Create a clean short link, download a QR code, and see how it
-								performs—without collecting visitor IP addresses or building a
-								profile of the people who click.
+								Change the destination while keeping the same short URL and QR
+								code. Track lifetime clicks and daily click counts for the
+								latest 30 UTC days.
 							</p>
 							<div className="flex flex-wrap gap-3">
 								<Button
@@ -174,11 +171,11 @@ export default function Home() {
 									nativeButton={false}
 									render={<Link href="/url-shortener" />}
 								>
-									See how it works
+									Explore the URL shortener
 								</Button>
 							</div>
 							<p className="text-muted-foreground text-xs">
-								Free MVP. Google sign-in. Up to 100 links per account.
+								Free to use. Sign in with Google. Up to 100 links per account.
 							</p>
 						</div>
 					</div>
@@ -193,11 +190,12 @@ export default function Home() {
 							id="features-heading"
 							className="font-semibold text-3xl tracking-tight"
 						>
-							Everything a short link needs
+							Built for the links you share
 						</h2>
 						<p className="mt-3 text-muted-foreground">
-							Elvo Links keeps the useful parts of a link shortener and leaves
-							out the parts that turn your audience into a dataset.
+							Update destinations without changing short URLs, reuse the same QR
+							codes, and review clicks without storing visitor IP addresses in
+							Elvo link analytics.
 						</p>
 					</div>
 					<div className="mt-10 grid gap-4 sm:grid-cols-3">
@@ -229,10 +227,11 @@ export default function Home() {
 								id="how-it-works-heading"
 								className="font-semibold text-3xl tracking-tight"
 							>
-								From long URL to useful link
+								Share a link in three steps
 							</h2>
 							<p className="mt-3 text-muted-foreground">
-								No setup ritual. Create an account, make a link, and share it.
+								Sign in with Google, add a destination URL, and share the short
+								URL or its QR code.
 							</p>
 						</div>
 						<ol className="mt-10 grid gap-4 md:grid-cols-3">
@@ -259,27 +258,27 @@ export default function Home() {
 					<div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[1fr_1.25fr]">
 						<div>
 							<p className="font-medium text-muted-foreground text-sm">
-								Privacy by default
+								Privacy in link analytics
 							</p>
 							<h2
 								id="privacy-heading"
 								className="mt-3 text-balance font-semibold text-3xl tracking-tight sm:text-4xl"
 							>
-								Clicks, not surveillance.
+								See link activity without building visitor profiles.
 							</h2>
 						</div>
 						<div className="space-y-5 text-muted-foreground">
 							<p>
-								Elvo Links records that a redirect happened, not who clicked it.
-								The analytics are deliberately aggregate: useful for
-								understanding activity, not for profiling people.
+								Elvo counts successful redirects without storing visitor IP
+								addresses, country, device, referrer, or unique-visitor IDs in
+								link analytics.
 							</p>
 							<ul className="grid gap-3 sm:grid-cols-2">
 								{[
-									"No visitor IP addresses in click analytics",
-									"No country, device, or referrer profiles",
-									"Lifetime counts plus 30 UTC days of daily data",
-									"Repeat clicks and bots are counted honestly",
+									"No visitor IP addresses in link analytics",
+									"No country, device, referrer, or visitor-ID data",
+									"Lifetime totals and daily counts for 30 UTC days",
+									"Repeat clicks and bot requests are included in click totals",
 								].map((item) => (
 									<li key={item} className="flex items-start gap-2">
 										<Check
@@ -296,7 +295,7 @@ export default function Home() {
 									href="/link-analytics"
 									className="text-foreground underline underline-offset-4"
 								>
-									how click analytics works
+									how link analytics work
 								</Link>
 								.
 							</p>
@@ -315,17 +314,18 @@ export default function Home() {
 									id="faq-preview-heading"
 									className="font-semibold text-3xl tracking-tight"
 								>
-									Questions, answered
+									Common questions
 								</h2>
 								<p className="mt-3 text-muted-foreground">
-									Short answers about accounts, QR codes, and click counting.
+									Answers about accounts, short links, QR codes, and click
+									analytics.
 								</p>
 							</div>
 							<Link
 								href="/faq"
 								className="text-sm underline underline-offset-4"
 							>
-								Read all FAQ
+								Browse all FAQs
 							</Link>
 						</div>
 						<div className="mt-8">
@@ -334,7 +334,11 @@ export default function Home() {
 					</div>
 				</section>
 
-				<CtaSection />
+				<CtaSection
+					title="Ready to share your first short link?"
+					description="Sign in with Google to create up to 100 short links and download a QR code for each."
+					secondaryLabel="Browse all FAQs"
+				/>
 			</main>
 		</>
 	);

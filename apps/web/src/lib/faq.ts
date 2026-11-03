@@ -5,62 +5,62 @@ export type FaqItem = {
 
 export const faqItems = [
 	{
-		question: "Is Elvo Links free?",
+		question: "Is Elvo Links free to use?",
 		answer:
-			"Yes. The current MVP is free to use. Creating and managing links requires a Google account.",
+			"Yes. Elvo Links is free to use. Sign in with Google to create and manage your links.",
 	},
 	{
-		question: "Do I need an account to open a short link?",
+		question: "Do visitors need an account to open a short link?",
 		answer:
-			"No. Anyone can open a short link. A Google account is only required to create and manage links.",
+			"No. Anyone can open an Elvo short link. You only need a Google account to create or manage links.",
 	},
 	{
 		question: "Can I edit a short link after sharing it?",
 		answer:
-			"Yes. Owners can edit the destination and title, or disable the link. The seven-character short code stays the same, so existing links and QR codes keep working.",
+			"Yes. You can update the destination or title without changing the seven-character code, so you do not need to replace short URLs or QR codes you have shared. You can also disable the link.",
 	},
 	{
-		question: "Do QR codes break if I change the destination?",
+		question: "Will my QR code work if I change the destination?",
 		answer:
-			"No. Every QR code encodes the Elvo short link, not the destination. Editing the destination keeps the short URL and the printed QR code valid.",
+			"Yes. Your QR code points to the Elvo short URL, not directly to the destination. Update the destination later and keep using the same QR code.",
 	},
 	{
 		question: "How are clicks counted?",
 		answer:
-			"Every successful redirect for a known, enabled link counts as one click. Repeat openings and bot requests count too. Elvo Links does not calculate unique visitors.",
+			"Each successful redirect for a known, enabled short link counts as one click. Repeat visits and bot requests count too; Elvo does not calculate unique visitors.",
 	},
 	{
 		question: "Do you collect visitor IP addresses for analytics?",
 		answer:
-			"Elvo click analytics does not store visitor IP addresses, country, device, referrer, or a unique-visitor identifier. Vercel Web Analytics and Speed Insights are cookieless and designed to avoid identifying individual visitors. Authentication sessions may store standard security metadata; see the privacy policy for details.",
+			"Elvo link analytics do not store visitor IP addresses, country, device, referrer, or unique-visitor IDs. Vercel Web Analytics and Speed Insights are cookieless and designed to avoid identifying individual visitors. Authentication sessions may still store standard security metadata. See the privacy policy for details.",
 	},
 	{
 		question: "How long is analytics data kept?",
 		answer:
-			"Lifetime totals stay with the link. Daily click aggregates are kept for the latest 30 UTC calendar days; older daily rows are removed.",
+			"Lifetime click totals stay with the link. Daily aggregates are kept for the latest 30 UTC calendar days; older daily records are removed.",
 	},
 	{
 		question: "What happens when I disable a link?",
 		answer:
-			'The short link stops redirecting and shows a "Link unavailable" page. Re-enabling it restores the original short URL and destination.',
+			'A disabled short link no longer redirects and shows a "Link unavailable" page. Re-enable it to restore the original destination and short URL.',
 	},
 	{
 		question: "How many links can I create?",
 		answer:
-			"Each account can hold up to 100 links and create at most 10 links per rolling minute. Disabled links still count toward the 100-link limit.",
+			"Each account can have up to 100 links. You can create no more than 10 links per rolling minute. Disabled links still count toward the limit.",
 	},
 	{
 		question: "Can I delete a link?",
 		answer:
-			"The MVP supports disabling links rather than deleting them. A disabled link stays in your account and keeps its quota slot.",
+			"The current version does not support deleting links. You can disable a link instead; it stays in your account and counts toward your limit.",
 	},
 	{
 		question: "Can I use my own domain?",
 		answer:
-			"Not in the current MVP. Every short link uses the Elvo Links public domain.",
+			"Elvo Links does not currently support custom domains. All short links use the Elvo Links domain.",
 	},
 	{
 		question: "Do I need to install an app?",
-		answer: "No. Elvo Links runs in the browser. Use it on desktop or mobile.",
+		answer: "No app is needed. Open Elvo Links in a desktop or mobile browser.",
 	},
 ] satisfies readonly FaqItem[];

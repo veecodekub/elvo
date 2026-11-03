@@ -56,8 +56,8 @@ export default function Footer() {
 						</span>
 					</Link>
 					<p className="max-w-xs text-muted-foreground text-sm">
-						Short Links. Clean Experience. Create, share, and understand your
-						links with click analytics that do not track visitors.
+						Create short links, download reusable QR codes, and review click
+						activity. Link analytics do not store visitor IP addresses.
 					</p>
 				</div>
 				<FooterGroup title="Product">
@@ -84,7 +84,7 @@ export default function Footer() {
 					<p>
 						© {new Date().getFullYear()} {SITE_NAME}. All rights reserved.
 					</p>
-					<p>Free to use. Built for simple sharing.</p>
+					<p>Free to use. Up to 100 links per account.</p>
 				</div>
 			</div>
 		</footer>

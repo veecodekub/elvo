@@ -1,6 +1,6 @@
 export const SITE_NAME = "Elvo Links";
 export const SITE_DESCRIPTION =
-	"Create clean short links, download QR codes, and see lifetime clicks plus a 30-day chart. Free with Google sign-in, with click analytics that do not track visitors.";
+	"Create short links, reusable QR codes, and click analytics. Track lifetime clicks and daily activity for 30 UTC days. Elvo link analytics do not store visitor IP addresses.";
 export const GITHUB_URL = "https://github.com/veecodekub/elvo";
 export const CONTACT_URL = `${GITHUB_URL}/issues`;
 
