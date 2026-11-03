@@ -53,10 +53,10 @@ bun run verify:links
 bun run verify:analytics
 bun run verify:qr
 bun run verify:seo
-bun run analytics:retention
+bun --preload ./scripts/test-database-preload.ts ./scripts/retention.ts
 ~~~
 
-The analytics and QR browser checks also require Chromium. Install it from apps/server with:
+The normal `bun run analytics:retention` command continues to target its configured operational database. Use the explicit preload command above only when verifying retention against the disposable fixture. The analytics and QR browser checks also require Chromium. Install it from apps/server with:
 
 ~~~sh
 bunx playwright install chromium

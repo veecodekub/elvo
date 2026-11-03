@@ -1,6 +1,14 @@
 import { expect, test } from "bun:test";
+import { createDb } from "@elvo/db";
+import { user } from "@elvo/db/schema/auth";
+import { linkDailyClicks, links } from "@elvo/db/schema/links";
 import { neon } from "@neondatabase/serverless";
+import { eq } from "drizzle-orm";
 
+import {
+	installAnalyticsFailureTrigger,
+	removeAnalyticsFailureTrigger,
+} from "./analytics-failure-trigger";
 import { startIsolatedDatabase } from "./test-database";
 
 test("Neon HTTP queries use the isolated PostgreSQL fixture", async () => {
@@ -39,60 +47,60 @@ test("Neon HTTP queries use the isolated PostgreSQL fixture", async () => {
 
 test("analytics failure injection affects only its fixture link", async () => {
 	const database = await startIsolatedDatabase();
-	const sql = neon(database.databaseUrl);
+	const db = createDb({ DATABASE_URL: database.databaseUrl });
 	const suffix = crypto.randomUUID();
 	const ownerId = `analytics-trigger-owner-${suffix}`;
 	const fixtureLinkId = crypto.randomUUID();
 	const unrelatedLinkId = crypto.randomUUID();
-	const functionName = `analytics_failure_${suffix.replaceAll("-", "")}`;
-	const triggerName = `${functionName}_trigger`;
 	try {
-		await sql.query(
-			`INSERT INTO "user" (id, name, email) VALUES ($1, $2, $3)`,
-			[ownerId, "Analytics trigger fixture", `${ownerId}@verify.invalid`],
-		);
-		for (const id of [fixtureLinkId, unrelatedLinkId]) {
-			await sql.query(
-				"INSERT INTO links (id, code, destination, owner_id) VALUES ($1, $2, $3, $4)",
-				[id, `code-${id}`, "https://example.invalid", ownerId],
-			);
-		}
-		await sql.query(
-			`CREATE FUNCTION ${functionName}() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'simulated analytics failure'; END; $$ LANGUAGE plpgsql`,
-		);
-		await sql.query(
-			`CREATE TRIGGER ${triggerName} BEFORE INSERT OR UPDATE ON link_daily_clicks FOR EACH ROW WHEN (NEW.link_id = '${fixtureLinkId}') EXECUTE FUNCTION ${functionName}()`,
-		);
+		await db.insert(user).values({
+			id: ownerId,
+			name: "Analytics trigger fixture",
+			email: `${ownerId}@verify.invalid`,
+		});
+		await db.insert(links).values([
+			{
+				id: fixtureLinkId,
+				code: `code-${fixtureLinkId}`,
+				destination: "https://example.invalid",
+				ownerId,
+			},
+			{
+				id: unrelatedLinkId,
+				code: `code-${unrelatedLinkId}`,
+				destination: "https://example.invalid",
+				ownerId,
+			},
+		]);
+		await installAnalyticsFailureTrigger(db, fixtureLinkId);
 
-		await sql.query(
-			"INSERT INTO link_daily_clicks (link_id, day, clicks) VALUES ($1, CURRENT_DATE, 1)",
-			[unrelatedLinkId],
-		);
+		await db.insert(linkDailyClicks).values({
+			linkId: unrelatedLinkId,
+			day: "2026-11-04",
+			clicks: 1,
+		});
 		let fixtureFailed = false;
 		try {
-			await sql.query(
-				"INSERT INTO link_daily_clicks (link_id, day, clicks) VALUES ($1, CURRENT_DATE, 1)",
-				[fixtureLinkId],
-			);
+			await db.insert(linkDailyClicks).values({
+				linkId: fixtureLinkId,
+				day: "2026-11-04",
+				clicks: 1,
+			});
 		} catch {
 			fixtureFailed = true;
 		}
 
-		const rows = await sql.query(
-			"SELECT link_id FROM link_daily_clicks WHERE link_id = $1",
-			[unrelatedLinkId],
-		);
+		const unrelatedRows = await db
+			.select({ linkId: linkDailyClicks.linkId })
+			.from(linkDailyClicks)
+			.where(eq(linkDailyClicks.linkId, unrelatedLinkId));
 		expect(fixtureFailed).toBe(true);
-		expect(rows).toHaveLength(1);
+		expect(unrelatedRows).toHaveLength(1);
 	} finally {
-		await sql
-			.query(`DROP TRIGGER IF EXISTS ${triggerName} ON link_daily_clicks`)
-			.catch(() => undefined);
-		await sql
-			.query(`DROP FUNCTION IF EXISTS ${functionName}()`)
-			.catch(() => undefined);
-		await sql
-			.query(`DELETE FROM "user" WHERE id = $1`, [ownerId])
+		await removeAnalyticsFailureTrigger(db).catch(() => undefined);
+		await db
+			.delete(user)
+			.where(eq(user.id, ownerId))
 			.catch(() => undefined);
 		await database.close();
 	}

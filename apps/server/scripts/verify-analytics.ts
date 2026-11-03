@@ -26,12 +26,15 @@ import {
 } from "../src/analytics/domain";
 import { deleteExpiredDailyClicks } from "../src/analytics/service";
 import { db } from "../src/services";
+import {
+	installAnalyticsFailureTrigger,
+	removeAnalyticsFailureTrigger,
+} from "./analytics-failure-trigger";
 
 const API_ORIGIN = process.env.VERIFY_API_ORIGIN ?? "http://localhost:3000";
 const WEB_ORIGIN = process.env.VERIFY_WEB_ORIGIN ?? "http://localhost:3001";
 const SECRET = process.env.BETTER_AUTH_SECRET ?? "";
 const DESTINATION = "https://example.com/analytics-verification";
-const FAILURE_FUNCTION = "verify_analytics_fail_daily";
 
 type LinkRecord = {
 	code: string;
@@ -169,46 +172,6 @@ async function publicRedirect(code: string) {
 function todayClicks(payload: AnalyticsPayload): number {
 	const today = utcDateKey(new Date());
 	return payload.days.find((day) => day.date === today)?.clicks ?? -1;
-}
-
-async function installFailureTrigger(linkId: string) {
-	if (
-		!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-			linkId,
-		)
-	) {
-		throw new Error("The failure trigger requires a fixture link UUID");
-	}
-	await removeFailureTrigger();
-	await db.execute(
-		sql.raw(`
-			CREATE FUNCTION ${FAILURE_FUNCTION}() RETURNS trigger AS $$
-			BEGIN
-				RAISE EXCEPTION 'simulated analytics recording failure';
-			END;
-			$$ LANGUAGE plpgsql
-		`),
-	);
-	await db.execute(
-		sql.raw(`
-			CREATE TRIGGER ${FAILURE_FUNCTION}_trigger
-			BEFORE INSERT OR UPDATE ON link_daily_clicks
-			FOR EACH ROW WHEN (NEW.link_id = '${linkId}')
-			EXECUTE FUNCTION ${FAILURE_FUNCTION}()
-		`),
-	);
-}
-
-async function removeFailureTrigger() {
-	try {
-		await db.execute(
-			sql.raw(
-				`DROP TRIGGER IF EXISTS ${FAILURE_FUNCTION}_trigger ON link_daily_clicks`,
-			),
-		);
-	} finally {
-		await db.execute(sql.raw(`DROP FUNCTION IF EXISTS ${FAILURE_FUNCTION}()`));
-	}
 }
 
 async function main() {
@@ -404,13 +367,13 @@ async function main() {
 
 		let failureResponse: Response;
 		try {
-			await installFailureTrigger(failureLinkId);
+			await installAnalyticsFailureTrigger(db, failureLinkId);
 			failureResponse = await publicRedirect(failureCode);
 			// Let the detached recording attempt run while the failing trigger is
 			// still installed; the redirect response itself is already complete.
 			await Bun.sleep(1_000);
 		} finally {
-			await removeFailureTrigger();
+			await removeAnalyticsFailureTrigger(db);
 		}
 		check(
 			"a redirect still succeeds while analytics recording fails",
@@ -706,7 +669,7 @@ async function main() {
 		await dialog.waitFor({ state: "hidden" });
 		check("the analytics dialog dismisses with the keyboard", true);
 	} finally {
-		await removeFailureTrigger().catch(() => undefined);
+		await removeAnalyticsFailureTrigger(db).catch(() => undefined);
 		await chromiumBrowser?.close();
 		const ids = [owner?.userId, other?.userId].filter((id): id is string =>
 			Boolean(id),
