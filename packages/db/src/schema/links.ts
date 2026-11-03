@@ -81,6 +81,10 @@ export const linkRateLimits = pgTable("link_rate_limits", {
 	ownerId: text("owner_id")
 		.primaryKey()
 		.references(() => user.id, { onDelete: "cascade" }),
+	// Keep old SQL compatible during rollout and rollback; the migration trigger
+	// mirrors legacy writes into the rolling reservations.
+	windowStartedAt: timestamp("window_started_at").defaultNow().notNull(),
+	windowCount: integer("window_count").default(0).notNull(),
 	reservations: timestamp("reservations", {
 		withTimezone: true,
 		mode: "date",

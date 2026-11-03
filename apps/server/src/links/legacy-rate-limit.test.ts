@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { createDb, type Database } from "@elvo/db";
 import { session, user } from "@elvo/db/schema/auth";
 import { neonConfig } from "@neondatabase/serverless";
@@ -139,5 +140,43 @@ describe("rolling link rate limit during mixed-version rollout", () => {
 		expect(await reservationCount(ownerId)).toBe(10);
 		expect(await reserveWithCurrentServer(ownerId)).toBe(false);
 		expect(await reservationCount(ownerId)).toBe(10);
+	});
+
+	test("backfills existing counters and preserves the previous server schema", async () => {
+		if (!database)
+			throw new Error("The isolated database was not initialized.");
+		const ownerId = await createOwner();
+		await database.execute(
+			sql`DROP TRIGGER elvo_capture_legacy_link_reservation ON link_rate_limits`,
+		);
+		await database.execute(
+			sql`DROP FUNCTION elvo_capture_legacy_link_reservation()`,
+		);
+		await database.execute(
+			sql`ALTER TABLE link_rate_limits DROP COLUMN reservations`,
+		);
+		await database.execute(sql`
+			INSERT INTO link_rate_limits (owner_id, window_started_at, window_count)
+			VALUES (${ownerId}, now(), 12)
+		`);
+		const migration = await readFile(
+			new URL(
+				"../../../../packages/db/src/migrations/20261103174849_rolling_link_rate_limits/migration.sql",
+				import.meta.url,
+			),
+			"utf8",
+		);
+		await database.execute(sql.raw(migration));
+		expect(await reservationCount(ownerId)).toBe(10);
+		expect(await reserveWithLegacyServer(ownerId)).toBe(false);
+		expect(await reserveWithCurrentServer(ownerId)).toBe(false);
+
+		await database.execute(sql`
+			UPDATE link_rate_limits
+			SET reservations = array_fill(now() - interval '61 seconds', ARRAY[10])
+			WHERE owner_id = ${ownerId}
+		`);
+		expect(await reserveWithCurrentServer(ownerId)).toBe(true);
+		expect(await reservationCount(ownerId)).toBe(1);
 	});
 });
