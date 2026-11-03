@@ -7,7 +7,6 @@ import { createAnalyticsRoutes } from "./analytics/routes";
 import { ENV } from "./env.server";
 import { createLinksRoutes } from "./links/routes";
 import { auth, db, publicWebOrigin } from "./services";
-import { createSessionIdentifier } from "./session";
 import type { AppEnv } from "./types";
 
 initLogger({
@@ -21,7 +20,6 @@ app.use(
 		drain: process.env.NODE_ENV === "production" ? undefined : createFsDrain(),
 	}),
 );
-app.use("*", createSessionIdentifier(auth));
 
 app.use(
 	"/*",

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { createAuth } from "@elvo/auth";
 import { Hono } from "hono";
-import { createRequireSession, createSessionIdentifier } from "./session";
+import { createRequireSession } from "./session";
 import type { AppEnv } from "./types";
 
 type TestSession = {
@@ -46,7 +46,6 @@ function createAppWithRequestLogging(auth: ReturnType<typeof createAuth>) {
 		} as never);
 		await next();
 	});
-	app.use("*", createSessionIdentifier(auth));
 	app.get("/api/links", createRequireSession(auth), (c) =>
 		c.json({ id: c.get("user").id }),
 	);
@@ -54,7 +53,7 @@ function createAppWithRequestLogging(auth: ReturnType<typeof createAuth>) {
 }
 
 describe("request-scoped auth session resolution", () => {
-	test("uses one session lookup for owner authorization and masked logging", async () => {
+	test("uses one lookup for owner authorization and masked logging per request", async () => {
 		const { auth, getLookups } = createAuthMock((headers) => {
 			const cookie = headers.get("cookie");
 			if (cookie === "session=one") return makeSession("one");
@@ -93,7 +92,7 @@ describe("request-scoped auth session resolution", () => {
 
 	test("keeps anonymous owner requests at the existing 401 response", async () => {
 		const { auth, getLookups } = createAuthMock(() => null);
-		const { app } = createAppWithRequestLogging(auth);
+		const { app, logs } = createAppWithRequestLogging(auth);
 
 		const response = await app.request("/api/links");
 		expect(response.status).toBe(401);
@@ -104,6 +103,20 @@ describe("request-scoped auth session resolution", () => {
 			},
 		});
 		expect(getLookups()).toBe(1);
+		expect(logs[0]?.auth).toMatchObject({ identified: false });
+	});
+
+	test("keeps backend session failures as 500 responses", async () => {
+		const { auth, getLookups } = createAuthMock(() => {
+			throw new Error("Session store unavailable.");
+		});
+		const { app, logs } = createAppWithRequestLogging(auth);
+		app.onError((_error, c) => c.text("Internal Server Error", 500));
+
+		const response = await app.request("/api/links");
+		expect(response.status).toBe(500);
+		expect(getLookups()).toBe(1);
+		expect(logs[0]?.auth).toMatchObject({ identified: false, error: true });
 	});
 
 	test("does not resolve sessions for public redirects or retention", async () => {
@@ -111,7 +124,9 @@ describe("request-scoped auth session resolution", () => {
 			throw new Error("Public routes must not resolve a session.");
 		});
 		const app = new Hono<AppEnv>();
-		app.use("*", createSessionIdentifier(auth));
+		app.get("/api/links", createRequireSession(auth), (c) =>
+			c.json({ id: c.get("user").id }),
+		);
 		app.get("/:code", (c) => c.text("redirect"));
 		app.get("/api/internal/retention", (c) => c.text("retained"));
 
