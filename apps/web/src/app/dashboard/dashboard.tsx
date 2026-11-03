@@ -114,6 +114,8 @@ import {
 	type ShortLink,
 } from "@/lib/links-api";
 import {
+	createLinkToggleController,
+	type LinkToggleRequest,
 	linkKeys,
 	linksQueryOptions,
 	setQuotaInSnapshots,
@@ -292,9 +294,11 @@ function LinkDestination({ destination }: { destination: string }) {
 function LinkStatus({
 	link,
 	onChange,
+	pending,
 }: {
 	link: ShortLink;
 	onChange: (link: ShortLink, enabled: boolean) => void;
+	pending: boolean;
 }) {
 	const name = linkTitle(link);
 	return (
@@ -303,13 +307,23 @@ function LinkStatus({
 				render={
 					<Switch
 						checked={link.enabled}
-						aria-label={`${link.enabled ? "Disable" : "Enable"} link: ${name}`}
+						disabled={pending}
+						aria-busy={pending}
+						aria-label={
+							pending
+								? `Updating status for link: ${name}`
+								: `${link.enabled ? "Disable" : "Enable"} link: ${name}`
+						}
 						onCheckedChange={(checked) => onChange(link, checked)}
 					/>
 				}
 			/>
 			<TooltipContent>
-				{link.enabled ? "Disable link" : "Enable link"}
+				{pending
+					? "Updating link status…"
+					: link.enabled
+						? "Disable link"
+						: "Enable link"}
 			</TooltipContent>
 		</Tooltip>
 	);
@@ -330,6 +344,9 @@ export default function Dashboard({
 	const [createdLink, setCreatedLink] = useState<ShortLink | null>(null);
 	const [qrLink, setQrLink] = useState<ShortLink | null>(null);
 	const [analyticsLink, setAnalyticsLink] = useState<ShortLink | null>(null);
+	const [pendingToggleCodes, setPendingToggleCodes] = useState<Set<string>>(
+		() => new Set(),
+	);
 	const [editing, setEditing] = useState<ShortLink | null>(null);
 	const [discardOpen, setDiscardOpen] = useState(false);
 
@@ -341,6 +358,12 @@ export default function Dashboard({
 	const destinationRef = useRef<HTMLInputElement>(null);
 	const editFormRef = useRef<HTMLFormElement>(null);
 	const editDestinationRef = useRef<HTMLInputElement>(null);
+	const toggleExecutionRef = useRef<
+		(request: LinkToggleRequest) => Promise<void>
+	>(async () => {});
+	const toggleControllerRef = useRef<ReturnType<
+		typeof createLinkToggleController
+	> | null>(null);
 
 	const {
 		data: linksSnapshot,
@@ -370,6 +393,20 @@ export default function Dashboard({
 	const createLinkMutation = useMutation({ mutationFn: createShortLink });
 	const updateLinkMutation = useUpdateLinkMutation();
 	const toggleLinkMutation = useToggleLinkMutation();
+
+	if (toggleControllerRef.current === null) {
+		toggleControllerRef.current = createLinkToggleController(
+			(request) => toggleExecutionRef.current(request),
+			(code, pending) => {
+				setPendingToggleCodes((current) => {
+					const next = new Set(current);
+					if (pending) next.add(code);
+					else next.delete(code);
+					return next;
+				});
+			},
+		);
+	}
 
 	const atQuota = quota.remaining <= 0;
 	const filtersActive = query.length > 0 || status !== "all";
@@ -449,43 +486,41 @@ export default function Dashboard({
 		}
 	}
 
-	function changeEnabled(link: ShortLink, enabled: boolean, isUndo = false) {
-		const previous = link.enabled;
-		if (previous === enabled) return;
+	async function executeToggle(request: LinkToggleRequest) {
+		const { link, enabled } = request;
+		try {
+			const result = await toggleLinkMutation.mutateAsync({
+				code: link.code,
+				enabled,
+			});
+			setCreatedLink((current) =>
+				current?.code === result.link.code ? result.link : current,
+			);
+			const label = enabled ? "enabled" : "disabled";
+			if (request.undo) {
+				toast.success(`${linkTitle(result.link)} ${label} again.`);
+			} else {
+				toast.success(`${linkTitle(result.link)} ${label}.`, {
+					action: {
+						label: "Undo",
+						onClick: () => changeEnabled(result.link, link.enabled, true),
+					},
+				});
+			}
+			void queryClient.invalidateQueries({ queryKey: linkKeys.lists() });
+		} catch (error) {
+			toast.error(
+				error instanceof LinksApiError ? error.message : GENERIC_UPDATE_ERROR,
+			);
+		}
+	}
+	toggleExecutionRef.current = executeToggle;
 
-		toggleLinkMutation.mutate(
-			{ code: link.code, enabled },
-			{
-				onError: (error) => {
-					toast.error(
-						error instanceof LinksApiError
-							? error.message
-							: GENERIC_UPDATE_ERROR,
-					);
-				},
-				onSuccess: ({ link: updatedLink }) => {
-					setCreatedLink((current) =>
-						current?.code === updatedLink.code ? updatedLink : current,
-					);
-					const label = enabled ? "enabled" : "disabled";
-					if (isUndo) {
-						toast.success(`${linkTitle(link)} ${label} again.`);
-					} else {
-						toast.success(`${linkTitle(link)} ${label}.`, {
-							action: {
-								label: "Undo",
-								onClick: () => {
-									changeEnabled({ ...link, enabled }, previous, true);
-								},
-							},
-						});
-					}
-					if (filtersActive) {
-						void queryClient.invalidateQueries({ queryKey: linkKeys.lists() });
-					}
-				},
-			},
-		);
+	function changeEnabled(link: ShortLink, enabled: boolean, isUndo = false) {
+		const controller = toggleControllerRef.current;
+		if (!controller) return;
+		if (!controller.isPending(link.code) && link.enabled === enabled) return;
+		controller.request({ link, enabled, undo: isUndo });
 	}
 
 	function openAnalytics(link: ShortLink) {
@@ -912,7 +947,11 @@ export default function Dashboard({
 															{formatNumber(link.totalClicks)} clicks
 														</span>
 													</Button>
-													<LinkStatus link={link} onChange={changeEnabled} />
+													<LinkStatus
+														link={link}
+														onChange={changeEnabled}
+														pending={pendingToggleCodes.has(link.code)}
+													/>
 												</CardFooter>
 											</Card>
 										</li>
@@ -969,7 +1008,11 @@ export default function Dashboard({
 														</Button>
 													</TableCell>
 													<TableCell>
-														<LinkStatus link={link} onChange={changeEnabled} />
+														<LinkStatus
+															link={link}
+															onChange={changeEnabled}
+															pending={pendingToggleCodes.has(link.code)}
+														/>
 													</TableCell>
 													<TableCell className="hidden lg:table-cell">
 														<time

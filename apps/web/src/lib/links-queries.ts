@@ -1,6 +1,8 @@
 import {
 	type QueryClient,
+	type QueryKey,
 	queryOptions,
+	type UseMutationOptions,
 	useMutation,
 	useQueryClient,
 } from "@tanstack/react-query";
@@ -40,6 +42,69 @@ type ToggleLinkVariables = {
 	code: string;
 	enabled: boolean;
 };
+
+type ToggleRollbackContext = {
+	previousEnabledByQuery: Array<{
+		queryKey: QueryKey;
+		enabled: boolean;
+	}>;
+};
+
+type ToggleLinkMutationFn = (
+	variables: ToggleLinkVariables,
+) => Promise<{ link: ShortLink }>;
+
+export type LinkToggleRequest = {
+	link: ShortLink;
+	enabled: boolean;
+	undo?: boolean;
+};
+
+export function createLinkToggleController(
+	execute: (request: LinkToggleRequest) => Promise<void>,
+	onPendingChange: (code: string, pending: boolean) => void,
+) {
+	const pendingCodes = new Set<string>();
+	const queuedUndo = new Map<string, LinkToggleRequest>();
+
+	async function run(request: LinkToggleRequest) {
+		try {
+			await execute(request);
+		} catch {
+			// The caller owns error reporting. Continue with a queued Undo if present.
+		}
+
+		const code = request.link.code;
+		const undoRequest = queuedUndo.get(code);
+		if (undoRequest) {
+			queuedUndo.delete(code);
+			void run(undoRequest);
+			return;
+		}
+
+		pendingCodes.delete(code);
+		onPendingChange(code, false);
+	}
+
+	return {
+		isPending(code: string) {
+			return pendingCodes.has(code);
+		},
+		request(request: LinkToggleRequest) {
+			const code = request.link.code;
+			if (pendingCodes.has(code)) {
+				if (request.undo) {
+					queuedUndo.set(code, request);
+				}
+				return;
+			}
+
+			pendingCodes.add(code);
+			onPendingChange(code, true);
+			void run(request);
+		},
+	};
+}
 
 export const linkKeys = {
 	all: ["links"] as const,
@@ -147,25 +212,49 @@ export function useUpdateLinkMutation() {
 
 export function useToggleLinkMutation() {
 	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: ({ code, enabled }: ToggleLinkVariables) =>
-			updateShortLink(code, { enabled }),
+	return useMutation(createToggleLinkMutationOptions(queryClient));
+}
+
+export function createToggleLinkMutationOptions(
+	queryClient: QueryClient,
+	mutationFn: ToggleLinkMutationFn = ({ code, enabled }) =>
+		updateShortLink(code, { enabled }),
+): UseMutationOptions<
+	{ link: ShortLink },
+	Error,
+	ToggleLinkVariables,
+	ToggleRollbackContext
+> {
+	return {
+		mutationFn,
 		onMutate: async ({ code, enabled }) => {
 			await queryClient.cancelQueries({ queryKey: linkKeys.lists() });
-			const previous = queryClient.getQueriesData<LinksSnapshot>({
-				queryKey: linkKeys.lists(),
-			});
+			const previousEnabledByQuery = queryClient
+				.getQueriesData<LinksSnapshot>({ queryKey: linkKeys.lists() })
+				.flatMap(([queryKey, snapshot]) => {
+					const link = snapshot?.links.find((current) => current.code === code);
+					return link ? [{ queryKey, enabled: link.enabled }] : [];
+				});
 			patchLinkInSnapshots(queryClient, code, { enabled });
-			return { previous };
+			return { previousEnabledByQuery } satisfies ToggleRollbackContext;
 		},
-		onError: (_error, _variables, context) => {
+		onError: (_error, variables, context) => {
 			if (!context) return;
-			for (const [queryKey, snapshot] of context.previous) {
-				queryClient.setQueryData(queryKey, snapshot);
+			for (const { queryKey, enabled } of context.previousEnabledByQuery) {
+				queryClient.setQueryData<LinksSnapshot>(queryKey, (snapshot) => {
+					if (!snapshot) return snapshot;
+					let changed = false;
+					const links = snapshot.links.map((link) => {
+						if (link.code !== variables.code) return link;
+						changed = true;
+						return { ...link, enabled };
+					});
+					return changed ? { ...snapshot, links } : snapshot;
+				});
 			}
 		},
 		onSuccess: ({ link }) => {
 			replaceLinkInSnapshots(queryClient, link);
 		},
-	});
+	};
 }
