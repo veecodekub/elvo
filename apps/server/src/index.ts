@@ -1,8 +1,4 @@
 import { initLogger } from "evlog";
-import {
-	type BetterAuthInstance,
-	createAuthMiddleware,
-} from "evlog/better-auth";
 import { createFsDrain } from "evlog/fs";
 import { evlog } from "evlog/hono";
 import { Hono } from "hono";
@@ -11,15 +7,11 @@ import { createAnalyticsRoutes } from "./analytics/routes";
 import { ENV } from "./env.server";
 import { createLinksRoutes } from "./links/routes";
 import { auth, db, publicWebOrigin } from "./services";
+import { createSessionIdentifier } from "./session";
 import type { AppEnv } from "./types";
 
 initLogger({
 	env: { service: "elvo-server" },
-});
-
-const identifyUser = createAuthMiddleware(auth as BetterAuthInstance, {
-	exclude: ["/api/auth/**"],
-	maskEmail: true,
 });
 
 const app = new Hono<AppEnv>();
@@ -29,10 +21,7 @@ app.use(
 		drain: process.env.NODE_ENV === "production" ? undefined : createFsDrain(),
 	}),
 );
-app.use("*", async (c, next) => {
-	await identifyUser(c.get("log"), c.req.raw.headers, c.req.path);
-	await next();
-});
+app.use("*", createSessionIdentifier(auth));
 
 app.use(
 	"/*",
