@@ -1,6 +1,6 @@
 # Google Sign-in Setup
 
-Elvo Links uses Better Auth 1.7.7 on the Hono server. Google is the only enabled sign-in method; email/password sign-in is disabled. The existing auth tables already store Google accounts, so this provider change needs no schema migration. Apply existing database migrations before first use.
+Elvo Links uses Better Auth 1.7.7 on the Hono server. Google is the only enabled sign-in method; email/password sign-in is disabled. The `user`, `session`, and `account` tables persist sign-in state and Google identities in the configured database. Apply all checked-in migrations before first use (`bun run db:migrate` for a fresh database).
 
 ## Local configuration
 
@@ -25,11 +25,11 @@ HTTPS uses secure cookies. Local same-host HTTP uses HTTP-only SameSite=Lax cook
 
 ## Verification
 
-- `bun test packages/auth/src/index.test.ts`
-- `bun run check-types`
+- `bun run test` from the repository root
+- `bun run check-types` from the repository root
 - Anonymous `/dashboard` redirects to `/login`; provider errors/cancellation return to a retryable login screen.
 - Verify success and sign-out using a real Google test user and configured database. Automated configuration tests do not prove Google's consent/callback round trip.
 
-The authenticated dashboard deliberately starts without demo link records; persistence and link creation belong to Issue #2. The accepted interactive design remains at the development-only `/prototype/dashboard` route.
+The authenticated dashboard starts without demo link records. Accounts, sessions, and user-created links persist in the configured database; link creation and management are implemented. The accepted interactive design remains at the development-only `/prototype/dashboard` route.
 
 Provider reference: https://www.better-auth.com/docs/authentication/google
