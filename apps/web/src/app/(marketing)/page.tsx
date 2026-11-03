@@ -109,38 +109,6 @@ export default function Home() {
 	return (
 		<>
 			<JsonLd data={jsonLd} />
-			<div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0">
-				<div
-					className="absolute inset-0 dark:hidden"
-					style={{ background: "#fff" }}
-				>
-					<div
-						className="absolute inset-0 opacity-30"
-						style={{
-							backgroundImage: `
-								linear-gradient(rgba(15, 23, 42, 0.1) 1px, transparent 1px),
-								linear-gradient(90deg, rgba(15, 23, 42, 0.1) 1px, transparent 1px)
-							`,
-							backgroundSize: "60px 60px",
-						}}
-					/>
-				</div>
-				<div
-					className="absolute inset-0 hidden dark:block"
-					style={{ background: "#000" }}
-				>
-					<div
-						className="absolute inset-0 opacity-30"
-						style={{
-							backgroundImage: `
-								linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px),
-								linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px)
-							`,
-							backgroundSize: "60px 60px",
-						}}
-					/>
-				</div>
-			</div>
 			<main className="relative z-10 flex-1">
 				<section className="border-b bg-muted/20">
 					<div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-24">

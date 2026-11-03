@@ -6,6 +6,7 @@ import { Inter } from "next/font/google";
 
 import "../index.css";
 import Header from "@/components/header";
+import PageBackground from "@/components/page-background";
 import Providers from "@/components/providers";
 import { ENV } from "@/env";
 import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/brand";
@@ -100,7 +101,8 @@ export default function RootLayout({
 		>
 			<body className="antialiased">
 				<Providers>
-					<div className="grid min-h-svh grid-rows-[auto_1fr]">
+					<PageBackground />
+					<div className="relative z-10 grid min-h-svh grid-rows-[auto_1fr]">
 						<Header />
 						{children}
 					</div>
