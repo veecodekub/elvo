@@ -1,6 +1,6 @@
 "use client";
 
-// Selected Compact prototype. All demo changes are held in memory.
+// Workspace redesign prototype. All demo changes are held in memory.
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -87,14 +87,15 @@ import {
 	TooltipTrigger,
 } from "@elvo/ui/components/tooltip";
 import {
-	ArrowDownLeft,
 	ArrowUpRight,
 	BarChart3,
+	CalendarDays,
 	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
 	Copy,
 	Download,
+	ExternalLink,
 	Link2,
 	LogOut,
 	Moon,
@@ -149,7 +150,7 @@ const initialLinks: DemoLink[] = [
 		createdAt: "2026-10-12T02:10:00Z",
 		title: "Something worth sharing",
 		destination: "https://example.com/collection",
-		clicks: 128,
+		clicks: 1628,
 		active: false,
 	},
 ];
@@ -212,6 +213,9 @@ function QrDownload({ code }: { code: string }) {
 }
 
 function LinkDestination({ destination }: { destination: string }) {
+	const url = new URL(destination);
+	const destinationLabel = `${url.hostname}${url.pathname === "/" ? "" : url.pathname}`;
+
 	return (
 		<Tooltip>
 			<TooltipTrigger
@@ -220,12 +224,18 @@ function LinkDestination({ destination }: { destination: string }) {
 						href={destination}
 						target="_blank"
 						rel="noreferrer"
-						className="block max-w-full truncate text-muted-foreground text-xs hover:text-foreground"
+						className="block max-w-full text-muted-foreground text-xs hover:text-foreground"
 						aria-label={`Destination: ${destination}`}
 					/>
 				}
 			>
-				<span>↗ {new URL(destination).hostname}</span>
+				<span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
+					<ExternalLink
+						className="size-3 shrink-0 text-muted-foreground"
+						aria-hidden="true"
+					/>
+					<span className="truncate">{destinationLabel}</span>
+				</span>
 			</TooltipTrigger>
 			<TooltipContent className="max-w-72 break-all">
 				{destination}
@@ -242,20 +252,25 @@ function LinkStatus({
 	onChange: (link: DemoLink, checked: boolean) => void;
 }) {
 	return (
-		<Tooltip>
-			<TooltipTrigger
-				render={
-					<Switch
-						checked={link.active}
-						aria-label={`Enable ${link.title}`}
-						onCheckedChange={(checked) => onChange(link, checked)}
-					/>
-				}
-			/>
-			<TooltipContent>
-				{link.active ? "Disable link" : "Enable link"}
-			</TooltipContent>
-		</Tooltip>
+		<div className="inline-flex items-center gap-2">
+			<span className="whitespace-nowrap text-muted-foreground text-xs">
+				{link.active ? "Active" : "Disabled"}
+			</span>
+			<Tooltip>
+				<TooltipTrigger
+					render={
+						<Switch
+							checked={link.active}
+							aria-label={`${link.active ? "Disable" : "Enable"} ${link.title}`}
+							onCheckedChange={(checked) => onChange(link, checked)}
+						/>
+					}
+				/>
+				<TooltipContent>
+					{link.active ? "Disable link" : "Enable link"}
+				</TooltipContent>
+			</Tooltip>
+		</div>
 	);
 }
 
@@ -263,6 +278,7 @@ export default function DashboardPrototype() {
 	const [links, setLinks] = useState(initialLinks);
 	const [query, setQuery] = useState("");
 	const [status, setStatus] = useState("all");
+	const [sortBy, setSortBy] = useState<"newest" | "clicks">("newest");
 	const [page, setPage] = useState(1);
 	const [discardOpen, setDiscardOpen] = useState(false);
 	const editFormRef = useRef<HTMLFormElement>(null);
@@ -278,15 +294,22 @@ export default function DashboardPrototype() {
 	} | null>(null);
 	const { resolvedTheme, setTheme } = useTheme();
 	const selected = links.find((link) => link.code === panel?.code);
-	const total = links.reduce((sum, link) => sum + link.clicks, 0);
-	const visible = links.filter(
-		(link) =>
-			(status === "all" ||
-				(status === "active" ? link.active : !link.active)) &&
-			`${link.title} ${link.destination} ${link.code}`
-				.toLowerCase()
-				.includes(query.toLowerCase()),
-	);
+	const activeLinks = links.filter((link) => link.active).length;
+	const totalClicks = links.reduce((sum, link) => sum + link.clicks, 0);
+	const visible = links
+		.filter(
+			(link) =>
+				(status === "all" ||
+					(status === "active" ? link.active : !link.active)) &&
+				`${link.title} ${link.destination} ${link.code}`
+					.toLowerCase()
+					.includes(query.toLowerCase()),
+		)
+		.sort((a, b) =>
+			sortBy === "clicks"
+				? b.clicks - a.clicks
+				: Date.parse(b.createdAt) - Date.parse(a.createdAt),
+		);
 
 	const pageCount = Math.max(1, Math.ceil(visible.length / 10));
 	const currentPage = Math.min(page, pageCount);
@@ -397,34 +420,36 @@ export default function DashboardPrototype() {
 
 	return (
 		<TooltipProvider>
-			<div className="min-h-svh min-w-0 bg-background text-foreground">
-				<div className="flex flex-wrap items-center justify-center gap-2 bg-muted px-4 py-2 text-foreground text-xs">
-					<Badge variant="outline">Prototype</Badge>
-					<span>Sample data. Nothing is saved.</span>
+			<div className="min-h-svh min-w-0 bg-muted/30 text-foreground">
+				<div className="border-b bg-muted/40 px-4 py-2 text-muted-foreground text-xs">
+					<div className="mx-auto flex max-w-7xl items-center justify-center gap-2">
+						<Badge variant="outline" className="h-5 bg-background px-2">
+							Preview
+						</Badge>
+						<span>Sample links · changes reset when you reload</span>
+					</div>
 				</div>
-				<header className="border-b">
-					<div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+				<header className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+					<div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
 						<div className="flex items-center gap-3">
-							<Button
-								variant="default"
-								size="icon"
-								aria-label="Elvo Links home"
-								onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+							<div
+								className="grid size-9 place-items-center rounded-md bg-primary font-semibold text-primary-foreground"
+								aria-hidden="true"
 							>
-								<ArrowDownLeft />
-							</Button>
-							<span className="font-semibold text-xl tracking-tight">
-								elvo{" "}
-								<span className="font-normal text-muted-foreground text-sm">
-									/ links
+								e
+							</div>
+							<div className="flex items-baseline gap-2">
+								<span className="font-semibold text-lg tracking-tight">
+									elvo
 								</span>
-							</span>
+								<span className="text-muted-foreground text-sm">Links</span>
+							</div>
 							<Separator
 								orientation="vertical"
-								className="mx-3 hidden h-5 data-vertical:self-center sm:block"
+								className="mx-2 hidden h-5 data-vertical:self-center sm:block"
 							/>
-							<span className="hidden font-medium text-sm sm:inline">
-								Your links
+							<span className="hidden text-muted-foreground text-sm sm:inline">
+								Workspace
 							</span>
 						</div>
 						<div className="flex items-center gap-3">
@@ -480,35 +505,76 @@ export default function DashboardPrototype() {
 						</div>
 					</div>
 				</header>
-				<main className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-4 px-4 py-6 sm:gap-6 sm:px-6">
-					<div className="flex flex-wrap items-end justify-between gap-4">
-						<div>
-							<h1 className="font-semibold text-2xl tracking-tight">
+				<main className="mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-5 px-4 py-5 sm:gap-6 sm:px-6 lg:px-8">
+					<div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+						<div className="min-w-0">
+							<p className="mb-2 font-medium text-muted-foreground text-xs uppercase tracking-[0.12em]">
+								Workspace / Links
+							</p>
+							<h1 className="font-semibold text-3xl tracking-tight sm:text-4xl">
 								Your links
 							</h1>
-							<p className="mt-1 text-muted-foreground text-sm">
-								A simple home for everything you share.
+							<p className="mt-2 max-w-xl text-muted-foreground text-sm sm:text-base">
+								Create, manage, and track your short links.
 							</p>
 						</div>
-						<div className="flex flex-wrap items-center gap-3 text-muted-foreground text-xs">
-							<Badge variant="secondary">{links.length} / 100 links</Badge>
-							<span>{formatNumber(total)} total clicks</span>
+						<div className="grid w-full max-w-lg grid-cols-2 divide-x rounded-xl border bg-card shadow-sm sm:w-[28rem]">
+							<div className="px-4 py-3">
+								<p className="text-muted-foreground text-xs">Total clicks</p>
+								<p className="mt-1 font-semibold text-xl tabular-nums">
+									{formatNumber(totalClicks)}
+								</p>
+								<p className="mt-1 text-muted-foreground text-xs">
+									Across all links
+								</p>
+							</div>
+							<div className="min-w-0 px-4 py-3">
+								<div className="flex items-center justify-between gap-2">
+									<p className="font-medium text-sm">Usage</p>
+									<p className="font-medium text-sm tabular-nums">
+										{links.length}{" "}
+										<span className="text-muted-foreground">/ 100</span>
+									</p>
+								</div>
+								<div
+									className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"
+									role="progressbar"
+									aria-label="Links used"
+									aria-valuemin={0}
+									aria-valuemax={100}
+									aria-valuenow={Math.min(links.length, 100)}
+								>
+									<div
+										className="h-full rounded-full bg-primary transition-[width] duration-300"
+										style={{ width: `${Math.min(links.length, 100)}%` }}
+									/>
+								</div>
+								<p className="mt-2 text-muted-foreground text-xs leading-snug">
+									{activeLinks} active · {Math.max(0, 100 - links.length)}{" "}
+									remaining
+								</p>
+							</div>
 						</div>
 					</div>
-					<Card className="min-w-0">
-						<CardHeader>
-							<CardTitle>Create a short link</CardTitle>
+					<Card className="min-w-0 overflow-hidden rounded-2xl border border-border/70 shadow-sm">
+						<CardHeader className="border-b bg-muted/20 sm:flex sm:flex-row sm:items-center sm:justify-between">
+							<div className="min-w-0">
+								<CardTitle>Create a short link</CardTitle>
+								<p className="mt-1 text-muted-foreground text-sm">
+									Paste a destination and share a cleaner URL in seconds.
+								</p>
+							</div>
 						</CardHeader>
-						<CardContent>
+						<CardContent className="p-4 sm:p-5">
 							<form onSubmit={createLink} noValidate>
-								<FieldGroup className="gap-3 md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto] md:items-end">
+								<FieldGroup className="gap-4 md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto] md:items-end">
 									<Field data-invalid={!!createError}>
 										<FieldLabel htmlFor="destination">
 											Destination URL
 										</FieldLabel>
 										<InputGroup>
 											<InputGroupAddon>
-												<Link2 />
+												<Link2 aria-hidden="true" />
 											</InputGroupAddon>
 											<InputGroupInput
 												id="destination"
@@ -543,7 +609,11 @@ export default function DashboardPrototype() {
 											maxLength={120}
 										/>
 									</Field>
-									<Button type="submit" disabled={links.length >= 100}>
+									<Button
+										type="submit"
+										className="h-10 w-full md:w-auto"
+										disabled={links.length >= 100}
+									>
 										Shorten link
 										<ArrowUpRight data-icon="inline-end" />
 									</Button>
@@ -581,14 +651,21 @@ export default function DashboardPrototype() {
 							</CardFooter>
 						) : null}
 					</Card>
-					<Card className="min-w-0">
-						<CardHeader className="gap-4 sm:flex sm:flex-row sm:items-center sm:justify-between">
-							<div className="flex items-center gap-2">
-								<CardTitle>All links</CardTitle>
-								<Badge variant="secondary">{links.length}</Badge>
+					<Card className="min-w-0 overflow-hidden rounded-2xl border border-border/70 shadow-sm">
+						<CardHeader className="gap-4 border-b bg-card sm:flex sm:flex-col sm:items-stretch lg:flex-row lg:items-center lg:justify-between">
+							<div className="min-w-0">
+								<div className="flex items-center gap-2">
+									<CardTitle>All links</CardTitle>
+									<Badge variant="secondary" className="tabular-nums">
+										{visible.length}
+									</Badge>
+								</div>
+								<p className="mt-1 text-muted-foreground text-sm">
+									Search and manage your short links.
+								</p>
 							</div>
-							<div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-								<InputGroup className="sm:w-64">
+							<div className="grid w-full gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_9rem] lg:w-[34rem]">
+								<InputGroup>
 									<InputGroupAddon>
 										<SearchIcon />
 									</InputGroupAddon>
@@ -618,7 +695,7 @@ export default function DashboardPrototype() {
 								>
 									<SelectTrigger
 										aria-label="Filter by status"
-										className="w-full sm:w-36"
+										className="w-full"
 									>
 										<SelectValue />
 									</SelectTrigger>
@@ -630,12 +707,39 @@ export default function DashboardPrototype() {
 										</SelectGroup>
 									</SelectContent>
 								</Select>
+								<Select
+									value={sortBy}
+									onValueChange={(value) => {
+										if (value === "newest" || value === "clicks") {
+											setSortBy(value);
+											setPage(1);
+										}
+									}}
+									items={[
+										{ value: "newest", label: "Newest" },
+										{ value: "clicks", label: "Most clicks" },
+									]}
+								>
+									<SelectTrigger aria-label="Sort links" className="w-full">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectGroup>
+											<SelectItem value="newest">Newest</SelectItem>
+											<SelectItem value="clicks">Most clicks</SelectItem>
+										</SelectGroup>
+									</SelectContent>
+								</Select>
 							</div>
 						</CardHeader>
 						<CardContent>
 							<div className="grid gap-3 md:hidden">
 								{pageLinks.map((link) => (
-									<Card key={link.code} size="sm" className="min-w-0 gap-2">
+									<Card
+										key={link.code}
+										size="sm"
+										className="min-w-0 gap-2 shadow-none"
+									>
 										<CardHeader>
 											<CardTitle className="min-w-0 truncate">
 												{link.title}
@@ -691,60 +795,76 @@ export default function DashboardPrototype() {
 												</DropdownMenu>
 											</CardAction>
 										</CardHeader>
-										<CardContent className="flex min-w-0 flex-col gap-1">
-											<Button
-												variant="link"
-												className="h-auto justify-start p-0"
-												onClick={() => copy(link.code)}
-												aria-label={`Copy short URL for ${link.title}`}
-											>
-												<span className="truncate font-mono">
-													elvo.example/{link.code}
-												</span>
-												<Copy data-icon="inline-end" />
-											</Button>
-											<LinkDestination destination={link.destination} />
-											<Tooltip>
-												<TooltipTrigger
-													render={
-														<Button
-															variant="link"
-															className="h-auto w-fit justify-start p-0"
-															aria-label={`Creation time for ${link.title}`}
-														/>
+										<CardContent className="flex min-w-0 flex-col gap-3">
+											<div className="grid min-w-0 gap-1.5">
+												<p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+													Short URL
+												</p>
+												<Button
+													variant="outline"
+													size="sm"
+													className="h-9 w-full justify-between gap-2 px-3 font-normal"
+													onClick={() => copy(link.code)}
+													aria-label={`Copy short URL for ${link.title}`}
+												>
+													<span className="min-w-0 truncate font-mono text-foreground text-xs">
+														elvo.example/{link.code}
+													</span>
+													<span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground text-xs">
+														<Copy className="size-3.5" aria-hidden="true" />
+														<span>Copy</span>
+													</span>
+												</Button>
+											</div>
+											<div className="grid min-w-0 gap-1.5">
+												<p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+													Destination
+												</p>
+												<LinkDestination destination={link.destination} />
+											</div>
+										</CardContent>
+										<CardFooter className="flex-wrap justify-between gap-2">
+											<div className="flex min-w-0 flex-wrap items-center gap-x-1">
+												<Button
+													variant="ghost"
+													size="sm"
+													className="h-8 gap-1 px-1"
+													aria-label={`Analytics for ${link.title}`}
+													onClick={() =>
+														setPanel({ kind: "analytics", code: link.code })
 													}
 												>
-													<time dateTime={link.createdAt}>
-														Created{" "}
-														{new Date(link.createdAt).toLocaleDateString(
-															"en-GB",
-															{
-																day: "numeric",
-																month: "short",
-																timeZone: "Asia/Bangkok",
-															},
-														)}
-													</time>
-												</TooltipTrigger>
-												<TooltipContent>
-													{formatCreatedAt(link.createdAt)} (UTC+7)
-												</TooltipContent>
-											</Tooltip>
-										</CardContent>
-										<CardFooter className="justify-between">
-											<Button
-												variant="ghost"
-												size="sm"
-												aria-label={`Analytics for ${link.title}`}
-												onClick={() =>
-													setPanel({ kind: "analytics", code: link.code })
-												}
-											>
-												<BarChart3 data-icon="inline-start" />
-												<span className="tabular-nums">
-													{formatNumber(link.clicks)} clicks
-												</span>
-											</Button>
+													<BarChart3 data-icon="inline-start" />
+													<span className="tabular-nums">
+														{formatNumber(link.clicks)} clicks
+													</span>
+												</Button>
+												<Tooltip>
+													<TooltipTrigger
+														render={
+															<span className="inline-flex items-center gap-1 whitespace-nowrap text-muted-foreground text-xs" />
+														}
+													>
+														<CalendarDays
+															className="size-3.5"
+															aria-hidden="true"
+														/>
+														<time dateTime={link.createdAt}>
+															{new Date(link.createdAt).toLocaleDateString(
+																"en-GB",
+																{
+																	day: "numeric",
+																	month: "short",
+																	timeZone: "Asia/Bangkok",
+																},
+															)}
+														</time>
+													</TooltipTrigger>
+													<TooltipContent>
+														{formatCreatedAt(link.createdAt)} (UTC+7)
+													</TooltipContent>
+												</Tooltip>
+											</div>
 											<LinkStatus link={link} onChange={changeStatus} />
 										</CardFooter>
 									</Card>
@@ -754,7 +874,7 @@ export default function DashboardPrototype() {
 								<Table>
 									<TableHeader>
 										<TableRow>
-											<TableHead>Link / destination</TableHead>
+											<TableHead>Link</TableHead>
 											<TableHead>Clicks</TableHead>
 											<TableHead>Status</TableHead>
 											<TableHead>Created (UTC+7)</TableHead>
@@ -765,23 +885,35 @@ export default function DashboardPrototype() {
 										{pageLinks.map((link) => (
 											<TableRow key={link.code}>
 												<TableCell>
-													<div className="flex w-44 min-w-0 flex-col gap-1 lg:w-80">
+													<div className="flex w-44 min-w-0 flex-col gap-1.5 lg:w-80">
 														<span className="truncate font-medium">
 															{link.title}
 														</span>
-														<button
-															type="button"
-															className="flex items-center gap-2 text-left font-mono text-muted-foreground text-xs hover:text-foreground"
-															onClick={() => copy(link.code)}
-															aria-label={`Copy short URL for ${link.title}`}
-														>
-															elvo.example/{link.code}
-															<Copy
-																className="size-3 shrink-0"
-																aria-hidden="true"
-															/>
-														</button>
-														<LinkDestination destination={link.destination} />
+														<div className="flex min-w-0 items-center gap-2">
+															<span className="w-20 shrink-0 font-medium text-muted-foreground text-xs">
+																Short URL
+															</span>
+															<button
+																type="button"
+																className="flex min-w-0 items-center gap-1.5 text-left font-mono text-foreground text-xs hover:text-primary"
+																onClick={() => copy(link.code)}
+																aria-label={`Copy short URL for ${link.title}`}
+															>
+																<span className="truncate">
+																	elvo.example/{link.code}
+																</span>
+																<Copy
+																	className="size-3 shrink-0"
+																	aria-hidden="true"
+																/>
+															</button>
+														</div>
+														<div className="flex min-w-0 items-center gap-2">
+															<span className="w-20 shrink-0 font-medium text-muted-foreground text-xs">
+																Destination
+															</span>
+															<LinkDestination destination={link.destination} />
+														</div>
 													</div>
 												</TableCell>
 												<TableCell>
@@ -810,58 +942,52 @@ export default function DashboardPrototype() {
 												</TableCell>
 												<TableCell>
 													<div className="flex justify-end gap-1">
-														<Tooltip>
-															<TooltipTrigger
+														<Button
+															variant="ghost"
+															size="sm"
+															className="h-8 gap-2 px-2"
+															aria-label={`Copy ${link.title}`}
+															onClick={() => copy(link.code)}
+														>
+															<Copy data-icon="inline-start" />
+															Copy
+														</Button>
+														<DropdownMenu>
+															<DropdownMenuTrigger
 																render={
 																	<Button
 																		variant="ghost"
 																		size="icon"
-																		aria-label={`Copy ${link.title}`}
-																		onClick={() => copy(link.code)}
+																		aria-label={`More actions for ${link.title}`}
 																	/>
 																}
 															>
-																<Copy />
-															</TooltipTrigger>
-															<TooltipContent>Copy link</TooltipContent>
-														</Tooltip>
-														<Tooltip>
-															<TooltipTrigger
-																render={
-																	<Button
-																		variant="ghost"
-																		size="icon"
-																		aria-label={`QR for ${link.title}`}
+																<MoreHorizontal />
+															</DropdownMenuTrigger>
+															<DropdownMenuContent align="end">
+																<DropdownMenuGroup>
+																	<DropdownMenuItem
 																		onClick={() =>
 																			setPanel({ kind: "qr", code: link.code })
 																		}
-																	/>
-																}
-															>
-																<QrCode />
-															</TooltipTrigger>
-															<TooltipContent>QR code</TooltipContent>
-														</Tooltip>
-														<Tooltip>
-															<TooltipTrigger
-																render={
-																	<Button
-																		variant="ghost"
-																		size="icon"
-																		aria-label={`Edit ${link.title}`}
+																	>
+																		<QrCode />
+																		QR code
+																	</DropdownMenuItem>
+																	<DropdownMenuItem
 																		onClick={() =>
 																			setPanel({
 																				kind: "edit",
 																				code: link.code,
 																			})
 																		}
-																	/>
-																}
-															>
-																<Pencil />
-															</TooltipTrigger>
-															<TooltipContent>Edit link</TooltipContent>
-														</Tooltip>
+																	>
+																		<Pencil />
+																		Edit link
+																	</DropdownMenuItem>
+																</DropdownMenuGroup>
+															</DropdownMenuContent>
+														</DropdownMenu>
 													</div>
 												</TableCell>
 											</TableRow>
@@ -893,7 +1019,7 @@ export default function DashboardPrototype() {
 								</Empty>
 							) : null}
 						</CardContent>
-						<CardFooter className="flex-wrap justify-between gap-3">
+						<CardFooter className="flex-wrap justify-between gap-3 border-t bg-muted/10">
 							<span className="text-muted-foreground text-xs" role="status">
 								{visible.length === 0
 									? "0"
@@ -933,9 +1059,9 @@ export default function DashboardPrototype() {
 							</nav>
 						</CardFooter>
 					</Card>
-					<footer className="flex flex-wrap justify-between gap-2 text-muted-foreground text-xs">
+					<footer className="flex flex-wrap justify-between gap-2 border-t pt-4 text-muted-foreground text-xs">
 						<span>Elvo Links · Short Links. Clean Experience.</span>
-						<span>Compact prototype · Changes reset on reload</span>
+						<span>Workspace prototype · Sample data only</span>
 					</footer>
 				</main>
 				<Dialog open={accountOpen} onOpenChange={setAccountOpen}>
@@ -979,7 +1105,7 @@ export default function DashboardPrototype() {
 						}
 					}}
 				>
-					<DialogContent>
+					<DialogContent className="min-w-0">
 						<DialogHeader>
 							<DialogTitle>
 								{panel?.kind === "analytics"
@@ -991,7 +1117,7 @@ export default function DashboardPrototype() {
 							<DialogDescription>{selected?.title}</DialogDescription>
 						</DialogHeader>
 						{selected && panel?.kind === "analytics" ? (
-							<div className="flex flex-col gap-4">
+							<div className="flex min-w-0 flex-col gap-4">
 								<div>
 									<p className="text-muted-foreground text-sm">Total clicks</p>
 									<p className="font-semibold text-3xl tabular-nums">
@@ -1002,7 +1128,7 @@ export default function DashboardPrototype() {
 									config={{
 										clicks: { label: "Clicks", color: "var(--foreground)" },
 									}}
-									className="h-48 w-full"
+									className="h-48 w-full min-w-0 max-w-full"
 								>
 									<BarChart accessibilityLayer data={activity}>
 										<CartesianGrid vertical={false} />

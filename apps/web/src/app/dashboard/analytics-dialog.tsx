@@ -90,12 +90,12 @@ export default function LinkAnalyticsDialog({
 
 	return (
 		<Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
-			<DialogContent className="sm:max-w-lg">
+			<DialogContent className="min-w-0 sm:max-w-lg">
 				<DialogHeader>
 					<DialogTitle>Click analytics</DialogTitle>
 					<DialogDescription>{linkTitle(link)}</DialogDescription>
 				</DialogHeader>
-				<div className="flex flex-col gap-4">
+				<div className="flex min-w-0 flex-col gap-4">
 					<div className="rounded-lg border bg-muted/30 px-4 py-3">
 						<p className="text-muted-foreground text-sm">Total Clicks</p>
 						<p
@@ -139,7 +139,7 @@ export default function LinkAnalyticsDialog({
 							<Skeleton className="h-48 w-full rounded-lg" />
 						</div>
 					) : analytics ? (
-						<div className="flex flex-col gap-3">
+						<div className="flex min-w-0 flex-col gap-3">
 							<div>
 								<p className="font-medium text-sm">Last 30 UTC calendar days</p>
 								<p className="text-muted-foreground text-xs">
@@ -153,7 +153,7 @@ export default function LinkAnalyticsDialog({
 										label: "Clicks",
 									},
 								}}
-								className="h-48 w-full"
+								className="h-48 w-full min-w-0 max-w-full"
 								role="group"
 								aria-label="Daily clicks for the last 30 UTC calendar days"
 							>
